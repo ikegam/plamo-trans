@@ -27,11 +27,13 @@ $ plamo-trans -t zh-hans 今日はいい天気ですね
 (個人利用と非商用利用は無料です。商用利用は、売上の規模によって登録か個別の契約が必要です)。
 
 ```sh
-scripts/download-model.sh              # 31B Q4_K_M(19.5 GB)。既定で使うモデル
-scripts/download-model.sh 0.8b         # 0.8B Q4_K_M(0.6 GB)。とても速いが、難しい文には弱い
+scripts/download-model.sh              # 8B  Q4_K_M(5.3 GB)。既定で使うモデル
+scripts/download-model.sh 2b           # 2B  Q4_K_M(1.8 GB)。-f 用
+scripts/download-model.sh 0.8b         # 0.8B Q4_K_M(0.6 GB)。-ff 用
+scripts/download-model.sh 31b          # 31B Q4_K_M(19.5 GB)。-d 用
 ```
 
-保存先は `${XDG_DATA_HOME:-~/.local/share}/plamo-trans/` です。途中で切れても続きからダウンロードし、
+使うサイズだけ入れれば十分です。保存先は `${XDG_DATA_HOME:-~/.local/share}/plamo-trans/` です。途中で切れても続きからダウンロードし、
 最後に Hugging Face の SHA-256 と照合します。
 
 ## ビルド
@@ -57,9 +59,14 @@ plamo-trans [オプション] [文章...]     文章を引数で渡さなけれ�
   -p / -P    丁寧体 / 常体の日本語      -e  やさしい日本語(ja(easy))
   -c 文章    文脈: 訳さずに参考として渡す文章
   -g ファイル 用語集。1 行に「原語<TAB>訳語」
-  -m ファイル モデル(既定: $PLAMO_MODEL、なければデータディレクトリの 31B Q4_K_M)
+  -ff        0.8B モデル(最速)     -f  2B(速い)     -d  31B(じっくり)
+  -m ファイル モデルのファイル(サイズの指定より優先)
   -v         llama.cpp のログと所要時間を標準エラーに出す
 ```
+
+サイズを指定しなければ 8B を使います(`$PLAMO_MODEL` があればそれを使います)。8B が入っていなければ、
+入っている中で近いサイズ(2B、31B、0.8B の順)を使い、標準エラーにその旨を出します。サイズを指定したときはそのサイズだけを使い、
+入っていなければダウンロードの方法を表示します。各サイズでは Q4_K_M を優先し、なければデータディレクトリにある別の量子化版を使います。
 
 言語コードは小文字で指定します(例: `en ja zh-hans zh-hant ko fr de es it pt ru`)。
 
@@ -69,7 +76,7 @@ plamo-trans [オプション] [文章...]     文章を引数で渡さなけれ�
 ## 補足
 
 - Linux arm64(NVIDIA RTX Spark N1X、CUDA 13.4)で動作を確認しています。モデルのファイルがページキャッシュに
-  載っていれば、0.8B モデルは起動・1 文の翻訳・終了までが 1 秒ほどです。
+  載っていれば、起動・1 文の翻訳・終了までが 0.8B で約 1 秒、8B で約 2 秒(毎秒 45 トークン)、31B で 4〜5 秒(毎秒 12.5 トークン)です。
 - llama.cpp の C API はよく変わります。別の版の llama.cpp でビルドやリンクに失敗したら、固定したコミットに戻してください。
 
 ## ライセンス

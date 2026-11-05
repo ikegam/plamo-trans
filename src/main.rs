@@ -110,8 +110,10 @@ const USAGE: &str = "usage: plamo-trans [options] [text...]   (text from stdin w
   -p / -P   polite / plain Japanese      -e  easy Japanese (ja(easy))
   -c TEXT   context: reference text that is not translated
   -g FILE   glossary, one \"source<TAB>target\" per line
-  -m FILE   model (default: $PLAMO_MODEL, else
-            ${XDG_DATA_HOME:-~/.local/share}/plamo-trans/plamo-3-translate-31b-Q4_K_M.gguf)
+  model size (default 8b; if 8b is not installed, the nearest installed size is used):
+  -ff       0.8b (fastest)    -f  2b (fast)    -d  31b (deep)
+  -m FILE   model file (overrides the size options; default also $PLAMO_MODEL)
+            models live in ${XDG_DATA_HOME:-~/.local/share}/plamo-trans/
   -v        llama.cpp logs and timings on stderr
 LANG: en ja zh-hans zh-hant ko fr de es it pt ru ...";
 
@@ -123,6 +125,7 @@ struct Opts {
     context: Option<String>,
     glossary: Option<String>,
     model: Option<String>,
+    size: Option<&'static str>,
     verbose: bool,
     text: Vec<String>,
 }
@@ -138,6 +141,9 @@ fn parse_args() -> Result<Opts, String> {
             "-c" => o.context = Some(val("-c")?),
             "-g" => o.glossary = Some(val("-g")?),
             "-m" => o.model = Some(val("-m")?),
+            "-ff" => o.size = Some("0.8b"),
+            "-f" => o.size = Some("2b"),
+            "-d" => o.size = Some("31b"),
             "-p" => o.form = Some("polite"),
             "-P" => o.form = Some("plain"),
             "-e" => o.target = Some("ja(easy)".into()),
@@ -151,12 +157,66 @@ fn parse_args() -> Result<Opts, String> {
     Ok(o)
 }
 
-fn default_model() -> String {
+const DEFAULT_SIZE: &str = "8b";
+/// Fallback order when the default size is not installed (nearest first, lighter first on ties).
+const FALLBACK: [&str; 4] = ["8b", "2b", "31b", "0.8b"];
+
+fn model_dir() -> std::path::PathBuf {
     let data = std::env::var("XDG_DATA_HOME")
         .ok()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| format!("{}/.local/share", std::env::var("HOME").unwrap_or_default()));
-    format!("{data}/plamo-trans/plamo-3-translate-31b-Q4_K_M.gguf")
+    std::path::Path::new(&data).join("plamo-trans")
+}
+
+/// Installed GGUF for a size: Q4_K_M if present, else any other quantisation of that size.
+fn find_model(size: &str) -> Option<String> {
+    let dir = model_dir();
+    let q4 = dir.join(format!("plamo-3-translate-{size}-Q4_K_M.gguf"));
+    if q4.is_file() {
+        return Some(q4.to_string_lossy().into_owned());
+    }
+    let prefix = format!("plamo-3-translate-{size}-");
+    let mut found: Vec<String> = std::fs::read_dir(&dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            n.starts_with(&prefix) && n.ends_with(".gguf")
+        })
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    found.sort();
+    found.pop()
+}
+
+fn download_hint(size: &str) -> String {
+    format!(
+        "the {size} model is not installed; download it with\n  {}/scripts/download-model.sh {size}",
+        env!("CARGO_MANIFEST_DIR")
+    )
+}
+
+fn resolve_model(o: &Opts) -> Result<String, String> {
+    if let Some(m) = &o.model {
+        return Ok(m.clone());
+    }
+    if let Some(size) = o.size {
+        return find_model(size).ok_or_else(|| download_hint(size));
+    }
+    if let Ok(m) = std::env::var("PLAMO_MODEL") {
+        return Ok(m);
+    }
+    for size in FALLBACK {
+        if let Some(m) = find_model(size) {
+            if size != DEFAULT_SIZE {
+                eprintln!("plamo-trans: {DEFAULT_SIZE} model not installed, using {size}");
+            }
+            return Ok(m);
+        }
+    }
+    Err(download_hint(DEFAULT_SIZE))
 }
 
 /// Remove reserved PFML markers so user text cannot inject prompt structure.
@@ -223,7 +283,7 @@ fn run(o: Opts) -> Result<(), String> {
         return Err("-p/-P need target ja".into());
     }
     let prompt = build_prompt(&o, &text, &target)?;
-    let model_path = o.model.clone().or_else(|| std::env::var("PLAMO_MODEL").ok()).unwrap_or_else(default_model);
+    let model_path = resolve_model(&o)?;
 
     VERBOSE.store(o.verbose, Ordering::Relaxed);
     unsafe {

@@ -28,11 +28,13 @@ This repository contains no model weights. Download them yourself from Hugging F
 non-commercial use is free; commercial use needs registration or a separate agreement depending on revenue).
 
 ```sh
-scripts/download-model.sh              # 31B Q4_K_M (19.5 GB), the default model
-scripts/download-model.sh 0.8b         # 0.8B Q4_K_M (0.6 GB), much faster, weaker on hard text
+scripts/download-model.sh              # 8B  Q4_K_M (5.3 GB), the default
+scripts/download-model.sh 2b           # 2B  Q4_K_M (1.8 GB), for -f
+scripts/download-model.sh 0.8b         # 0.8B Q4_K_M (0.6 GB), for -ff
+scripts/download-model.sh 31b          # 31B Q4_K_M (19.5 GB), for -d
 ```
 
-The files go to `${XDG_DATA_HOME:-~/.local/share}/plamo-trans/`. Downloads resume after interruption and the
+You only need the sizes you use. The files go to `${XDG_DATA_HOME:-~/.local/share}/plamo-trans/`. Downloads resume after interruption and the
 SHA-256 is checked against Hugging Face.
 
 ## Build
@@ -59,9 +61,15 @@ plamo-trans [options] [text...]       text from stdin when no text argument is g
   -p / -P   polite / plain Japanese      -e  easy Japanese (ja(easy))
   -c TEXT   context: reference text that is not translated
   -g FILE   glossary, one "source<TAB>target" per line
-  -m FILE   model file (default: $PLAMO_MODEL, else the 31B Q4_K_M in the data directory)
+  -ff       0.8B model (fastest)     -f  2B (fast)     -d  31B (deep)
+  -m FILE   model file (overrides the size options)
   -v        llama.cpp logs and timings on stderr
 ```
+
+Without a size option the 8B model is used (or `$PLAMO_MODEL` if set). If 8B is not installed, the nearest
+installed size is used instead (2B, 31B, 0.8B in that order) with a note on stderr. A size option asks for exactly
+that size and tells you how to download it when it is missing. For each size, Q4_K_M is preferred, then any other
+quantisation found in the data directory.
 
 Language codes are lowercase, e.g. `en ja zh-hans zh-hant ko fr de es it pt ru`.
 
@@ -70,8 +78,8 @@ GGUF. Input and output together are limited to the model's 32K-token training le
 
 ## Notes
 
-- Tested on Linux arm64 (NVIDIA RTX Spark N1X, CUDA 13.4). With the model file in the page cache, the 0.8B model
-  starts, translates a sentence and exits in about one second.
+- Tested on Linux arm64 (NVIDIA RTX Spark N1X, CUDA 13.4). With the model file in the page cache, one sentence
+  (start, translate, exit) takes about 1 s with 0.8B, 2 s with 8B (45 tokens/s) and 4–5 s with 31B (12.5 tokens/s).
 - llama.cpp's C API changes often. If you build against another llama.cpp version and it fails to compile or link,
   go back to the pinned commit.
 
