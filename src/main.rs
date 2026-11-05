@@ -51,24 +51,26 @@ unsafe extern "C" {
     ) -> i32;
     fn llama_vocab_is_eog(vocab: *const Vocab, tok: Token) -> bool;
     fn llama_batch_ext_init(ctx: *mut Ctx) -> *mut Batch;
-    fn llama_batch_ext_free(b: *mut Batch);
     fn llama_batch_ext_clear(b: *mut Batch);
     fn llama_batch_ext_add_token(b: *mut Batch, seq: i32, tok: Token) -> i32;
     fn llama_batch_ext_set_pos(b: *mut Batch, idx: i32, pos: *const i32) -> bool;
     fn llama_batch_ext_set_output_logits(b: *mut Batch, idx: i32, v: bool) -> bool;
     fn llama_process(ctx: *mut Ctx, ty: c_int, b: *mut Batch) -> i32;
     fn llama_sampler_sample(s: *mut Sampler, ctx: *mut Ctx, idx: i32) -> Token;
-    fn llama_sampler_free(s: *mut Sampler);
-    fn llama_free(ctx: *mut Ctx);
-    fn llama_model_free(m: *mut Model);
     fn ggml_time_us() -> i64;
+    fn _exit(code: c_int) -> !;
 }
 
 static VERBOSE: AtomicBool = AtomicBool::new(false);
+static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 extern "C" fn log_cb(level: c_int, text: *const c_char, _: *mut c_void) {
     if VERBOSE.load(Ordering::Relaxed) || level == GGML_LOG_LEVEL_ERROR {
         let s = unsafe { std::ffi::CStr::from_ptr(text) };
+        if VERBOSE.load(Ordering::Relaxed) {
+            let ms = START.get_or_init(std::time::Instant::now).elapsed().as_millis();
+            let _ = write!(std::io::stderr(), "{ms:>6} ");
+        }
         let _ = std::io::stderr().write_all(s.to_bytes());
     }
 }
@@ -380,16 +382,13 @@ fn run(o: Opts) -> Result<(), String> {
             n_gen as f64 / s(t_prompt, t_end)
         );
     }
-    unsafe {
-        llama_batch_ext_free(batch);
-        llama_sampler_free(smpl);
-        llama_free(ctx);
-        llama_model_free(model);
-    }
-    Ok(())
+    // Output is flushed; skip freeing the model, context and CUDA state (~70 ms) and let the OS reclaim it.
+    let _ = (batch, smpl, ctx, model);
+    unsafe { _exit(0) }
 }
 
 fn main() -> ExitCode {
+    START.get_or_init(std::time::Instant::now);
     match parse_args() {
         Err(e) => {
             if !e.is_empty() {

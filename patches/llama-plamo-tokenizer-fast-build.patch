@@ -1,0 +1,278 @@
+diff --git i/src/llama-vocab.cpp w/src/llama-vocab.cpp
+index 229a051..2b1ccf5 100644
+--- i/src/llama-vocab.cpp
++++ w/src/llama-vocab.cpp
+@@ -20,6 +20,8 @@
+ #include <map>
+ #include <queue>
+ #include <set>
++#include <string_view>
++#include <thread>
+ #include <unordered_map>
+ 
+ //
+@@ -1467,140 +1469,170 @@ struct llm_tokenizer_plamo2 : llm_tokenizer {
+         build(vocab);
+     }
+ 
++    // Suffixes and prefixes are byte ranges of the token texts at UTF-8 code point boundaries, held as
++    // string_views, so no strings are rebuilt character by character. The prefix lookups and the table fill
++    // are split over threads.
+     void build(const llama_vocab & vocab) {
+-        // Reset internal structures
+         tokens_.clear();
+         bytes_.assign(256, 0);
+         to_suffix_id_.clear();
+         table_.clear();
+ 
+-        // Build token list and byte mapping
+-        std::unordered_map<std::string, float> suffix_to_score;
+-        std::unordered_map<std::string, llama_token> token_to_id;
++        const size_t n_vocab = vocab.n_tokens();
++        auto cpt_len = [](unsigned char c) -> size_t {
++            return c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xe ? 3 : (c >> 3) == 0x1e ? 4 : 1;
++        };
+ 
+-        for (size_t token_id = 0; token_id < vocab.n_tokens(); ++token_id) {
++        std::unordered_map<std::string_view, float>       suffix_to_score;
++        std::unordered_map<std::string_view, llama_token> token_to_id;
++        suffix_to_score.reserve(n_vocab * 4);
++        token_to_id.reserve(n_vocab);
++        tokens_.reserve(n_vocab);
++
++        for (size_t token_id = 0; token_id < n_vocab; ++token_id) {
+             const auto & entry = vocab.get_token_data(token_id);
+             tokens_.push_back(entry.text);
+-            token_to_id[entry.text] = static_cast<llama_token>(token_id);
++            const std::string_view text(entry.text);
++            token_to_id[text] = static_cast<llama_token>(token_id);
+ 
+-            // Handle byte tokens
+             if (vocab.is_byte(token_id)) {
+-                if (entry.text.length() == 6 && entry.text.substr(0, 3) == "<0x" && entry.text.back() == '>') {
+-                    std::string hex_str = entry.text.substr(3, 2);
+-                    if (std::isxdigit(static_cast<unsigned char>(hex_str[0])) && std::isxdigit(static_cast<unsigned char>(hex_str[1]))) {
+-                        int byte_val = std::stoi(hex_str, nullptr, 16);
+-                        bytes_[byte_val] = static_cast<llama_token>(token_id);
+-                    }
++                if (text.length() == 6 && text.substr(0, 3) == "<0x" && text.back() == '>' &&
++                    std::isxdigit(static_cast<unsigned char>(text[3])) && std::isxdigit(static_cast<unsigned char>(text[4]))) {
++                    bytes_[std::stoi(std::string(text.substr(3, 2)), nullptr, 16)] = static_cast<llama_token>(token_id);
+                 }
+                 continue;
+             }
+ 
+-            // Add token and all its suffixes to suffix_to_score
+-            suffix_to_score[entry.text] = entry.score;
+-
+-            // Extract suffixes character by character (UTF-8 aware)
+-            std::vector<uint32_t> cpts = unicode_cpts_from_utf8(entry.text);
+-            for (size_t i = 1; i < cpts.size(); ++i) {
+-                std::string suffix;
+-                for (size_t j = i; j < cpts.size(); ++j) {
+-                    suffix += unicode_cpt_to_utf8(cpts[j]);
+-                }
+-                if (suffix_to_score.find(suffix) == suffix_to_score.end()) {
+-                    suffix_to_score[suffix] = std::numeric_limits<float>::quiet_NaN();
+-                }
++            suffix_to_score[text] = entry.score;
++            for (size_t i = cpt_len(text[0]); i < text.size(); i += cpt_len(text[i])) {
++                suffix_to_score.try_emplace(text.substr(i), std::numeric_limits<float>::quiet_NaN());
+             }
+         }
+ 
+-        // Check that all byte tokens are set
+         for (int i = 0; i < 256; ++i) {
+             if (bytes_[i] == 0) {
+                 throw std::runtime_error("Byte token for <0x" + std::to_string(i) + "> is not set");
+             }
+         }
+ 
+-        // Build suffix list in lexicographical order of reversed strings
+-        std::vector<std::string> suffixes;
++        // suffixes in lexicographical order of their reversed bytes
++        std::vector<std::string_view> suffixes;
+         suffixes.reserve(suffix_to_score.size() + 1);
+         for (const auto & pair : suffix_to_score) {
+             suffixes.push_back(pair.first);
+         }
+-        suffixes.push_back("");  // Empty suffix
+-
+-        std::sort(suffixes.begin(), suffixes.end(), [](const std::string & a, const std::string & b) {
+-            std::string rev_a(a.rbegin(), a.rend());
+-            std::string rev_b(b.rbegin(), b.rend());
+-            return rev_a < rev_b;
++        suffixes.push_back(std::string_view());
++        std::sort(suffixes.begin(), suffixes.end(), [](std::string_view a, std::string_view b) {
++            return std::lexicographical_compare(a.rbegin(), a.rend(), b.rbegin(), b.rend(),
++                                                [](char x, char y) { return (unsigned char) x < (unsigned char) y; });
+         });
+ 
+-        // Build suffix_to_id and to_suffix_id_
+-        std::unordered_map<std::string, int32_t> suffix_to_id;
+-        int32_t num_pieces = 0;
++        // For every suffix, its prefixes that are pieces (longest first), looked up once.
++        struct prefix_info {
++            uint32_t    end;     // byte length of the prefix
++            int32_t     length;  // code points
++            float       score;
++            llama_token token;
++        };
++        // parallel over contiguous chunks of suffixes (read-only lookups), then concatenated in order
++        const size_t n_suf = suffixes.size();
++        const int    n_thr = std::max(1, std::min<int>(16, (int) std::thread::hardware_concurrency()));
++        std::vector<std::vector<prefix_info>> part(n_thr);
++        std::vector<uint32_t>                 prefix_count(n_suf, 0);
++        {
++            std::vector<std::thread> workers;
++            for (int t = 0; t < n_thr; ++t) {
++                workers.emplace_back([&, t]() {
++                    const size_t k0 = n_suf * t / n_thr, k1 = n_suf * (t + 1) / n_thr;
++                    auto & out = part[t];
++                    out.reserve((k1 - k0) * 2);
++                    for (size_t k = k0; k < k1; ++k) {
++                        const std::string_view suffix = suffixes[k];
++                        const size_t start = out.size();
++                        int32_t n_cpt = 0;
++                        for (size_t i = 0; i < suffix.size();) {
++                            i += cpt_len(suffix[i]);
++                            n_cpt++;
++                            auto it = suffix_to_score.find(suffix.substr(0, i));
++                            if (it != suffix_to_score.end()) {
++                                auto tok = token_to_id.find(it->first);
++                                out.push_back({ static_cast<uint32_t>(i), n_cpt, it->second,
++                                                tok != token_to_id.end() ? tok->second : -1 });
++                            }
++                        }
++                        std::reverse(out.begin() + start, out.end());
++                        prefix_count[k] = static_cast<uint32_t>(out.size() - start);
++                    }
++                });
++            }
++            for (auto & w : workers) {
++                w.join();
++            }
++        }
++        std::vector<prefix_info> prefixes;
++        std::vector<uint32_t>    prefix_begin(n_suf + 1, 0);
++        for (size_t k = 0; k < n_suf; ++k) {
++            prefix_begin[k + 1] = prefix_begin[k] + prefix_count[k];
++        }
++        prefixes.reserve(prefix_begin[n_suf]);
++        for (auto & v : part) {
++            prefixes.insert(prefixes.end(), v.begin(), v.end());
++        }
+ 
+-        for (const auto & suffix : suffixes) {
++        auto decode_first = [](std::string_view s) -> uint32_t {
++            const unsigned char c = s[0];
++            if (c < 0x80) return c;
++            if ((c >> 5) == 0x6 && s.size() >= 2) return ((c & 0x1f) << 6) | (s[1] & 0x3f);
++            if ((c >> 4) == 0xe && s.size() >= 3) return ((c & 0x0f) << 12) | ((s[1] & 0x3f) << 6) | (s[2] & 0x3f);
++            if ((c >> 3) == 0x1e && s.size() >= 4)
++                return ((c & 0x07) << 18) | ((s[1] & 0x3f) << 12) | ((s[2] & 0x3f) << 6) | (s[3] & 0x3f);
++            return unicode_cpts_from_utf8(std::string(s.substr(0, 1)))[0];
++        };
++
++        std::unordered_map<std::string_view, int32_t> suffix_to_id;
++        suffix_to_id.reserve(suffixes.size());
++        to_suffix_id_.reserve(suffixes.size());
++        int32_t num_pieces = 0;
++        for (size_t k = 0; k < suffixes.size(); ++k) {
++            const std::string_view suffix = suffixes[k];
+             suffix_to_id[suffix] = num_pieces;
+             if (!suffix.empty()) {
+-                std::vector<uint32_t> cpts = unicode_cpts_from_utf8(suffix);
+-
+-                std::string remaining;
+-                for (size_t i = 1; i < cpts.size(); ++i) {
+-                    remaining += unicode_cpt_to_utf8(cpts[i]);
+-                }
+-
+-                int64_t piece_code = (static_cast<int64_t>(cpts[0]) << 32) | suffix_to_id[remaining];
++                const size_t first = cpt_len(suffix[0]);
++                int64_t piece_code = (static_cast<int64_t>(decode_first(suffix)) << 32) | suffix_to_id[suffix.substr(first)];
+                 to_suffix_id_[piece_code] = num_pieces;
+-
+-                // Count number of pieces for this suffix
+-                int32_t pieces_for_suffix = 1; // sentinel row
+-                for (int32_t piece_length = static_cast<int32_t>(cpts.size()); piece_length > 0; --piece_length) {
+-                    std::string piece;
+-                    for (int32_t i = 0; i < piece_length; ++i) {
+-                        piece += unicode_cpt_to_utf8(cpts[i]);
+-                    }
+-                    if (suffix_to_score.find(piece) != suffix_to_score.end()) {
+-                        pieces_for_suffix++;
+-                    }
+-                }
+-                num_pieces += pieces_for_suffix;
++                num_pieces += 1 + static_cast<int32_t>(prefix_begin[k + 1] - prefix_begin[k]);
+             } else {
+-                num_pieces++;  // Empty suffix contributes one piece (sentinel row)
++                num_pieces++;
+             }
+         }
+ 
+-        // Build flattened table
+         table_.resize(num_pieces, std::vector<int32_t>(4, 0));
+-        int32_t table_idx = 0;
+-
+-        for (const auto & suffix : suffixes) {
+-            // Add all prefixes of the suffix to the table (in decreasing order of length)
+-            std::vector<uint32_t> cpts = unicode_cpts_from_utf8(suffix);
+-            for (int32_t piece_length = static_cast<int32_t>(cpts.size()); piece_length > 0; --piece_length) {
+-                std::string piece;
+-                for (int32_t i = 0; i < piece_length; ++i) {
+-                    piece += unicode_cpt_to_utf8(cpts[i]);
+-                }
+-
+-                auto score_it = suffix_to_score.find(piece);
+-                if (score_it == suffix_to_score.end()) {
+-                    continue;
+-                }
+-
+-                table_[table_idx][TABLE_PIECE_LENGTH] = piece_length;
+-                auto token_it = token_to_id.find(piece);
+-                table_[table_idx][TABLE_TOKEN_ID] = (token_it != token_to_id.end()) ? token_it->second : -1;
+-
+-                float score = score_it->second;
+-                table_[table_idx][TABLE_SCORE] = std::isfinite(score) ?
+-                    static_cast<int32_t>(std::round(score * 1e4)) : INVALID_SCORE;
+-                table_[table_idx][TABLE_PIECE_ID] = suffix_to_id[piece];
+-
+-                table_idx++;
++        // row of suffix k starts at prefix_begin[k] + k (each suffix has its prefixes plus one sentinel row)
++        {
++            std::vector<std::thread> workers;
++            for (int t = 0; t < n_thr; ++t) {
++                workers.emplace_back([&, t]() {
++                    const size_t k0 = n_suf * t / n_thr, k1 = n_suf * (t + 1) / n_thr;
++                    for (size_t k = k0; k < k1; ++k) {
++                        size_t r = prefix_begin[k] + k;
++                        for (uint32_t j = prefix_begin[k]; j < prefix_begin[k + 1]; ++j) {
++                            const prefix_info & pi = prefixes[j];
++                            auto & row = table_[r++];
++                            row[TABLE_PIECE_LENGTH] = pi.length;
++                            row[TABLE_TOKEN_ID]     = pi.token;
++                            row[TABLE_SCORE]        = std::isfinite(pi.score) ? static_cast<int32_t>(std::round(pi.score * 1e4)) : INVALID_SCORE;
++                            row[TABLE_PIECE_ID]     = suffix_to_id.find(suffixes[k].substr(0, pi.end))->second;
++                        }
++                        auto & row = table_[r];
++                        row[TABLE_PIECE_LENGTH] = 1;
++                        row[TABLE_TOKEN_ID]     = -1;
++                        row[TABLE_SCORE]        = UNKNOWN_SCORE;
++                    }
++                });
++            }
++            for (auto & w : workers) {
++                w.join();
+             }
+-
+-            // Add sentinel row
+-            table_[table_idx][TABLE_PIECE_LENGTH] = 1;
+-            table_[table_idx][TABLE_TOKEN_ID] = -1;
+-            table_[table_idx][TABLE_SCORE] = UNKNOWN_SCORE;
+-            table_idx++;
+         }
+     }
+ 
