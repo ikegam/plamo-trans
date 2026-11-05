@@ -49,10 +49,16 @@ ln -s "$PWD/target/release/plamo-trans" ~/.local/bin/plamo-trans
 ```
 
 `build-llama.sh` clones llama.cpp into `./llama.cpp` at the commit this tool was tested with (override with
-`LLAMA_REF=...`), applies the patches in `patches/` and builds its shared libraries. The patch rewrites the
-start-up of llama.cpp's PLaMo tokenizer (it builds a ~960k-row lookup table on every load): 0.76 s → 0.2 s, with
-an identical table. The binary finds them through an rpath, so keep this directory where
-it is. Set `LLAMA_DIR` to use an existing llama.cpp build tree instead.
+`LLAMA_REF=...`), applies the patches in `patches/` and builds its shared libraries. The patches only make
+start-up faster:
+
+- `0001`: llama.cpp's PLaMo tokenizer builds a ~960k-row lookup table on every load. Rewritten with string views
+  and threads: 0.76 s → 0.2 s, with an identical table.
+- `0002`: backend/device setup (CUDA start-up, ~0.2 s) runs in parallel with reading the vocabulary and building the
+  tokenizer instead of before it.
+- `0003`: weights are read in larger chunks (up to 64 MiB) with several threads before the async upload to the GPU.
+
+The binary finds the libraries through an rpath, so keep this directory where it is. Set `LLAMA_DIR` to use an existing llama.cpp build tree instead.
 
 ## Usage
 
@@ -81,9 +87,9 @@ GGUF. Input and output together are limited to the model's 32K-token training le
 ## Notes
 
 - Tested on Linux arm64 (NVIDIA RTX Spark N1X, CUDA 13.4). With the model file in the page cache, one sentence
-  (start, translate, exit) takes about 0.7 s with 0.8B, 1 s with 2B, 1.7 s with 8B (45 tokens/s) and 4–5 s with
-  31B (12.5 tokens/s). Most of the fixed part is CUDA start-up (0.2 s) and the tokenizer table (0.2 s); for 8B,
-  copying the weights to the GPU adds 0.6 s.
+  (start, translate, exit) takes about 0.55 s with 0.8B, 0.8 s with 2B, 1.3 s with 8B (45 tokens/s) and 4–5 s
+  with 31B (12.5 tokens/s). The fixed part is mostly CUDA start-up (0.2 s, now overlapped with the tokenizer); for
+  8B, copying the weights to the GPU adds about 0.45 s.
 - llama.cpp's C API changes often. If you build against another llama.cpp version and it fails to compile or link,
   go back to the pinned commit.
 

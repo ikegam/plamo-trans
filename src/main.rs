@@ -28,9 +28,9 @@ unsafe extern "C" {
     fn pt_load_model(path: *const c_char, n_gpu_layers: c_int) -> *mut Model;
     fn pt_new_context(model: *mut Model, n_ctx: u32, n_batch: u32) -> *mut Ctx;
     fn pt_greedy_sampler() -> *mut Sampler;
+    fn pt_light_init();
 
     fn llama_log_set(cb: extern "C" fn(c_int, *const c_char, *mut c_void), ud: *mut c_void);
-    fn llama_backend_init();
     fn llama_model_get_vocab(model: *const Model) -> *const Vocab;
     fn llama_tokenize(
         vocab: *const Vocab,
@@ -290,7 +290,7 @@ fn run(o: Opts) -> Result<(), String> {
     VERBOSE.store(o.verbose, Ordering::Relaxed);
     unsafe {
         llama_log_set(log_cb, std::ptr::null_mut());
-        llama_backend_init();
+        pt_light_init();
     }
     let t0 = unsafe { ggml_time_us() };
     let cpath = CString::new(model_path.clone()).map_err(|e| e.to_string())?;

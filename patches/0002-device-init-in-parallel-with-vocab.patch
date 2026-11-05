@@ -1,0 +1,57 @@
+diff --git i/src/llama.cpp w/src/llama.cpp
+index e3699ea..727699c 100644
+--- i/src/llama.cpp
++++ w/src/llama.cpp
+@@ -17,6 +17,7 @@
+ #include "gguf.h"
+ 
+ #include <algorithm>
++#include <future>
+ #include <cassert>
+ #include <cinttypes>
+ #include <cstddef>
+@@ -324,10 +325,18 @@ static std::pair<int, llama_model *> llama_model_load(struct gguf_context * meta
+         ml.print_info();
+         std::unique_ptr<llama_model> model_ptr(llama_model_create(ml, params));
+ 
+-        bool ok = llama_prepare_model_devices(params, model_ptr.get());
+-        if (!ok) {
+-            return {-1, nullptr};
+-        }
++        // Device setup (the first registry access initialises the backends, e.g. ~0.2 s for CUDA) does not depend on
++        // the hyperparameters or the vocabulary, so it runs in parallel with loading them (and building the tokenizer).
++        std::future<int> devices_ready = std::async(std::launch::async, [&params, &model_ptr]() {
++            if (!params.vocab_only && ggml_backend_reg_count() == 0) {
++                ggml_backend_load_all();  // as llama_backend_init() would, for callers that skip it
++            }
++            if (!params.vocab_only && ggml_backend_reg_count() == 0) {
++                LLAMA_LOG_ERROR("%s: no backends are loaded. hint: use ggml_backend_load() or ggml_backend_load_all() to load a backend before calling this function\n", "llama_model_load");
++                return -1;
++            }
++            return llama_prepare_model_devices(params, model_ptr.get()) ? 0 : -1;
++        });
+ 
+         auto * model = dynamic_cast<llama_model_base *>(model_ptr.get());
+         if (model == nullptr) {
+@@ -358,6 +367,9 @@ static std::pair<int, llama_model *> llama_model_load(struct gguf_context * meta
+         }
+ 
+         model->load_stats(ml);
++        if (devices_ready.get() != 0) {
++            return {-1, nullptr};
++        }
+         model->print_info();
+ 
+         if (params.vocab_only) {
+@@ -403,10 +415,7 @@ static struct llama_model * llama_model_load_from_file_impl(
+     // TODO: remove
+     ggml_time_init();
+ 
+-    if (!params.vocab_only && ggml_backend_reg_count() == 0) {
+-        LLAMA_LOG_ERROR("%s: no backends are loaded. hint: use ggml_backend_load() or ggml_backend_load_all() to load a backend before calling this function\n", __func__);
+-        return nullptr;
+-    }
++    // the backend check runs with the device setup in llama_model_load(), in parallel with reading the vocabulary
+ 
+     unsigned cur_percentage = 0;
+     if (params.progress_callback == NULL) {

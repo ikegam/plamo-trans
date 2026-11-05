@@ -1,0 +1,84 @@
+diff --git i/src/llama-model-loader.cpp w/src/llama-model-loader.cpp
+index 485483b..a6f7f86 100644
+--- i/src/llama-model-loader.cpp
++++ w/src/llama-model-loader.cpp
+@@ -15,6 +15,54 @@
+ #include <regex>
+ #include <unordered_set>
+ 
++#ifndef _WIN32
++#include <unistd.h>
++#endif
++#include <thread>
++
++// Staging chunk for async uploads: bigger chunks keep the copy engine busy, but the pinned staging buffers
++// (4 chunks) cost time to allocate, so scale with the model: 1/64 of the data, 1..64 MiB.
++// LLAMA_UPLOAD_CHUNK_MB overrides.
++static size_t llama_upload_chunk_size(size_t size_data) {
++    const size_t mib = 1024 * 1024;
++    if (const char * e = getenv("LLAMA_UPLOAD_CHUNK_MB")) {
++        return (size_t) std::max(1L, atol(e)) * mib;
++    }
++    return std::clamp<size_t>(size_data / 64 / mib, 1, 64) * mib;
++}
++
++// Read len bytes at off with several threads (page-cache reads are CPU-bound). Returns false to fall back.
++static bool llama_pread_parallel(int fd, void * dst, size_t len, size_t off) {
++#ifdef _WIN32
++    GGML_UNUSED(fd); GGML_UNUSED(dst); GGML_UNUSED(len); GGML_UNUSED(off);
++    return false;
++#else
++    static const int n_thr = [] {
++        const char * e = getenv("LLAMA_READ_THREADS");
++        const int    n = e ? atoi(e) : std::min(16, (int) std::thread::hardware_concurrency());
++        return std::max(1, n);
++    }();
++    const size_t min_part = 2 * 1024 * 1024;
++    const int    n = (int) std::min<size_t>(n_thr, std::max<size_t>(1, len / min_part));
++    std::vector<int> ok(n, 1);
++    auto work = [&](int t) {
++        size_t a = len * t / n, b = len * (t + 1) / n;
++        while (a < b) {
++            ssize_t r = ::pread(fd, (char *) dst + a, b - a, (off_t) (off + a));
++            if (r <= 0) { ok[t] = 0; return; }
++            a += (size_t) r;
++        }
++    };
++    std::vector<std::thread> th;
++    for (int t = 1; t < n; ++t) th.emplace_back(work, t);
++    work(0);
++    for (auto & x : th) x.join();
++    for (int v : ok) if (!v) return false;
++    return true;
++#endif
++}
++
++
+ static const size_t kiB = 1024;
+ static const size_t MiB = 1024*kiB;
+ static const size_t GiB = 1024*MiB;
+@@ -1588,7 +1636,7 @@ bool llama_model_loader::load_all_data(
+     }
+ 
+     // Buffer size: balance between memory usage and I/O efficiency
+-    const size_t buffer_size = alignment != 1 ? LLAMA_DIRECT_IO_BUFFER_SIZE + 2 * alignment : 1 * 1024 * 1024;
++    const size_t buffer_size = alignment != 1 ? LLAMA_DIRECT_IO_BUFFER_SIZE + 2 * alignment : llama_upload_chunk_size(size_data);
+ 
+     std::vector<ggml_backend_buffer_t> host_buffers;
+     std::vector<ggml_backend_event_t> events;
+@@ -1784,8 +1832,13 @@ bool llama_model_loader::load_all_data(
+                         // Wait for previous upload to complete before reusing buffer
+                         ggml_backend_event_synchronize(events[buffer_idx]);
+ 
+-                        // Read aligned chunk from file
+-                        file->read_raw_unsafe(reinterpret_cast<void *>(ptr_dest_aligned), read_size);
++                        // Read aligned chunk from file (in parallel when it is large and the file is not O_DIRECT)
++                        if (alignment == 1 && llama_pread_parallel(file->file_id(), reinterpret_cast<void *>(ptr_dest_aligned),
++                                                                   read_size, read_start + bytes_read)) {
++                            file->seek(read_start + bytes_read + read_size, SEEK_SET);
++                        } else {
++                            file->read_raw_unsafe(reinterpret_cast<void *>(ptr_dest_aligned), read_size);
++                        }
+ 
+                         // Calculate actual data portion (excluding alignment padding)
+                         uintptr_t ptr_data = ptr_dest_aligned;

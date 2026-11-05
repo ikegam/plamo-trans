@@ -21,3 +21,12 @@ struct llama_sampler * pt_greedy_sampler(void) {
     llama_sampler_chain_add(s, llama_sampler_init_greedy());
     return s;
 }
+
+// llama_backend_init() without touching the backend registry: the first registry access initialises the
+// backends (~0.2 s for CUDA), and llama_model_load() now does that in parallel with reading the vocabulary.
+void pt_light_init(void) {
+    ggml_time_init();
+    struct ggml_init_params params = { 0, NULL, false };
+    struct ggml_context * ctx = ggml_init(params);  // f16 tables
+    ggml_free(ctx);
+}
