@@ -19,6 +19,8 @@ $ plamo-trans -t zh-hans 今日はいい天気ですね
 - Direction is chosen automatically: input with kana is translated into English, anything else into Japanese.
   Use `-t` for other languages.
 - Output is streamed as it is generated (greedy decoding).
+- Ctrl-C returns to the shell at once. The work runs in a forked child; the parent, which the shell waits for,
+  never touches CUDA, so neither Ctrl-C nor a normal exit waits for the kernel to tear down the GPU state.
 - Written in Rust. It calls `libllama` directly; the only C is a tiny shim that fills llama.cpp's parameter structs.
 
 ## The model is not included
@@ -87,7 +89,7 @@ GGUF. Input and output together are limited to the model's 32K-token training le
 ## Notes
 
 - Tested on Linux arm64 (NVIDIA RTX Spark N1X, CUDA 13.4). With the model file in the page cache, one sentence
-  (start, translate, exit) takes about 0.55 s with 0.8B, 0.8 s with 2B, 1.3 s with 8B (45 tokens/s) and 4–5 s
+  (start, translate, exit) takes about 0.5 s with 0.8B, 0.75 s with 2B, 1.2 s with 8B (45 tokens/s) and 4–5 s
   with 31B (12.5 tokens/s). The fixed part is mostly CUDA start-up (0.2 s, now overlapped with the tokenizer); for
   8B, copying the weights to the GPU adds about 0.45 s.
 - llama.cpp's C API changes often. If you build against another llama.cpp version and it fails to compile or link,

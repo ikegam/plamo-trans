@@ -59,6 +59,15 @@ unsafe extern "C" {
     fn llama_sampler_sample(s: *mut Sampler, ctx: *mut Ctx, idx: i32) -> Token;
     fn ggml_time_us() -> i64;
     fn _exit(code: c_int) -> !;
+    fn fork() -> c_int;
+    fn pipe(fds: *mut c_int) -> c_int;
+    fn read(fd: c_int, buf: *mut c_void, n: usize) -> isize;
+    fn write(fd: c_int, buf: *const c_void, n: usize) -> isize;
+    fn close(fd: c_int) -> c_int;
+    fn waitpid(pid: c_int, status: *mut c_int, options: c_int) -> c_int;
+    fn prctl(option: c_int, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> c_int;
+    fn getppid() -> c_int;
+    fn getpid() -> c_int;
 }
 
 static VERBOSE: AtomicBool = AtomicBool::new(false);
@@ -382,9 +391,72 @@ fn run(o: Opts) -> Result<(), String> {
             n_gen as f64 / s(t_prompt, t_end)
         );
     }
-    // Output is flushed; skip freeing the model, context and CUDA state (~70 ms) and let the OS reclaim it.
+    // Output is flushed. The model, context and CUDA state are not freed: the worker process _exit()s and
+    // the OS reclaims them in the background (see main()).
     let _ = (batch, smpl, ctx, model);
-    unsafe { _exit(0) }
+    Ok(())
+}
+
+/// Translate in a forked worker and return to the shell as soon as the worker reports its result.
+///
+/// Tearing down a process that holds a CUDA context and gigabytes of GPU/pinned memory takes the kernel
+/// 0.1-0.2 s, and the shell waits for that both on a normal exit and on Ctrl-C. The parent here never touches
+/// CUDA, so it exits at once: after the worker has flushed its output and written its exit code to a pipe,
+/// or immediately on Ctrl-C (SIGINT goes to the whole foreground process group; the worker dies too and its
+/// teardown finishes in the background). The fork happens before any CUDA initialisation.
+fn run_forked(o: Opts) -> ExitCode {
+    let mut fds = [0 as c_int; 2];
+    if unsafe { pipe(fds.as_mut_ptr()) } != 0 {
+        return report(run(o));
+    }
+    let parent = unsafe { getpid() };
+    let pid = unsafe { fork() };
+    if pid < 0 {
+        return report(run(o));
+    }
+    if pid == 0 {
+        // worker: die with the parent (e.g. when only the parent is killed), PR_SET_PDEATHSIG = 1, SIGKILL = 9
+        unsafe {
+            prctl(1, 9, 0, 0, 0);
+            if getppid() != parent {
+                _exit(130);
+            }
+            close(fds[0]);
+        }
+        let code: u8 = match run(o) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("plamo-trans: {e}");
+                1
+            }
+        };
+        let _ = std::io::stdout().flush();
+        unsafe {
+            write(fds[1], (&code as *const u8).cast(), 1);
+            _exit(code as c_int)
+        }
+    }
+    // parent: wait for the worker's exit code, not for its exit
+    unsafe { close(fds[1]) };
+    let mut code = 0u8;
+    if unsafe { read(fds[0], (&mut code as *mut u8).cast(), 1) } == 1 {
+        return ExitCode::from(code);
+    }
+    // the worker died without reporting (killed or crashed): mirror its status
+    let mut status: c_int = 0;
+    unsafe { waitpid(pid, &mut status, 0) };
+    let (exited, sig) = (status & 0x7f == 0, status & 0x7f);
+    ExitCode::from(if exited { ((status >> 8) & 0xff) as u8 } else { 128u8.wrapping_add(sig as u8) })
+}
+
+fn report(r: Result<(), String>) -> ExitCode {
+    match r {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("plamo-trans: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -397,12 +469,6 @@ fn main() -> ExitCode {
             eprintln!("{USAGE}");
             ExitCode::from(2)
         }
-        Ok(o) => match run(o) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("plamo-trans: {e}");
-                ExitCode::FAILURE
-            }
-        },
+        Ok(o) => run_forked(o),
     }
 }
