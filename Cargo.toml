@@ -1,0 +1,14 @@
+[package]
+name = "plamo-trans"
+version = "0.1.0"
+edition = "2024"
+description = "One-shot PLaMo 3 Translate CLI on top of libllama (no server)"
+license-file = "LICENSE"
+repository = "https://github.com/ikegam/plamo-trans"
+
+[build-dependencies]
+cc = "1"
+
+[profile.release]
+lto = true
+strip = true
