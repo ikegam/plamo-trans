@@ -23,6 +23,8 @@ const PROCESS_TYPE_DECODE: c_int = 1;
 const GGML_LOG_LEVEL_ERROR: c_int = 4;
 /// PLaMo 3 Translate is trained on up to 32K tokens (input + output).
 const MAX_CTX: i32 = 32768;
+/// Error marker for a closed stdout; exits quietly with 141 (128 + SIGPIPE) like other Unix tools.
+const BROKEN_PIPE: &str = "\0broken pipe";
 
 unsafe extern "C" {
     fn pt_load_model(path: *const c_char, n_gpu_layers: c_int) -> *mut Model;
@@ -364,8 +366,8 @@ fn run(o: Opts) -> Result<(), String> {
                 Ok(_) => pending.len(),
                 Err(e) => e.valid_up_to(),
             };
-            let _ = out.write_all(&pending[..valid]);
-            let _ = out.flush();
+            // stop at once when the reader is gone (e.g. `| head`)
+            out.write_all(&pending[..valid]).and_then(|_| out.flush()).map_err(|_| BROKEN_PIPE.to_string())?;
             pending.drain(..valid);
         }
         n_gen += 1;
@@ -375,9 +377,10 @@ fn run(o: Opts) -> Result<(), String> {
         }
         pos += 1;
     }
-    let _ = out.write_all(&pending);
-    let _ = out.write_all(b"\n");
-    let _ = out.flush();
+    out.write_all(&pending)
+        .and_then(|_| out.write_all(b"\n"))
+        .and_then(|_| out.flush())
+        .map_err(|_| BROKEN_PIPE.to_string())?;
     let t_end = unsafe { ggml_time_us() };
 
     if o.verbose {
@@ -425,6 +428,7 @@ fn run_forked(o: Opts) -> ExitCode {
         }
         let code: u8 = match run(o) {
             Ok(()) => 0,
+            Err(e) if e == BROKEN_PIPE => 141,
             Err(e) => {
                 eprintln!("plamo-trans: {e}");
                 1
@@ -452,6 +456,7 @@ fn run_forked(o: Opts) -> ExitCode {
 fn report(r: Result<(), String>) -> ExitCode {
     match r {
         Ok(()) => ExitCode::SUCCESS,
+        Err(e) if e == BROKEN_PIPE => ExitCode::from(141),
         Err(e) => {
             eprintln!("plamo-trans: {e}");
             ExitCode::FAILURE

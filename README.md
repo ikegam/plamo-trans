@@ -23,6 +23,31 @@ $ plamo-trans -t zh-hans 今日はいい天気ですね
   never touches CUDA, so neither Ctrl-C nor a normal exit waits for the kernel to tear down the GPU state.
 - Written in Rust. It calls `libllama` directly; the only C is a tiny shim that fills llama.cpp's parameter structs.
 
+## Design
+
+plamo-trans is meant to be one more filter in a Unix pipeline, so it is built around three rules:
+
+1. **Text in, text out.** Text comes from the arguments or stdin, the translation goes to stdout and nothing else
+   does: logs stay off unless `-v` is given, errors go to stderr, and the exit code says what happened. Translation
+   is streamed, so the next command in the pipeline starts receiving text right away.
+
+   ```sh
+   xclip -o | plamo-trans | xclip -i          # translate the selection
+   git log -1 --format=%B | plamo-trans -t ja
+   plamo-trans -ff < notes.txt | less
+   ```
+
+2. **Fast.** There is no server to start or keep running, so every run pays the whole start-up cost, and the
+   start-up is where the work went: the tokenizer table is built 4x faster, CUDA start-up runs in parallel with it,
+   weights are read with many threads, and the process does not wait for GPU teardown on exit. A sentence takes
+   about 0.5 s with `-ff` and 1.2 s with the default 8B model.
+
+3. **Stops at once.** Ctrl-C returns to the shell immediately, and when the reader goes away (`| head`, a closed
+   pager) generation stops at the next token and the exit code is 141, as for any tool killed by SIGPIPE. If the
+   process is killed, the worker that holds the GPU goes with it.
+
+Exit codes: `0` done, `1` error (message on stderr), `2` bad usage, `130` interrupted, `141` reader closed.
+
 ## The model is not included
 
 This repository contains no model weights. Download them yourself from Hugging Face and **read the
