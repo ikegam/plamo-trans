@@ -32,7 +32,7 @@ plamo-trans is meant to be one more filter in a Unix pipeline, so it is built ar
    is streamed, so the next command in the pipeline starts receiving text right away.
 
    ```sh
-   xclip -o | plamo-trans | xclip -i          # translate the selection
+   wl-paste | plamo-trans | wl-copy           # translate the clipboard (Wayland)
    git log -1 --format=%B | plamo-trans -t ja
    plamo-trans -ff < notes.txt | less
    ```

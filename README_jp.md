@@ -31,7 +31,7 @@ plamo-trans は、Unix のパイプラインに挟むフィルターの 1 つと
    流すので、パイプの次のコマンドはすぐに受け取り始められます。
 
    ```sh
-   xclip -o | plamo-trans | xclip -i          # 選択中の文章を訳す
+   wl-paste | plamo-trans | wl-copy           # クリップボードの文章を訳す(Wayland)
    git log -1 --format=%B | plamo-trans -t ja
    plamo-trans -ff < notes.txt | less
    ```
