@@ -117,7 +117,7 @@ fn batch_set(b: *mut Batch, toks: &[Token], pos0: i32, logits_last: bool) {
 
 // ---- options and prompt ----
 
-const USAGE: &str = "usage: plamo-trans [options] [text...]   (text from stdin when no text argument)
+const USAGE: &str = "usage: trans [options] [text...]   (text from stdin when no text argument)
   -t LANG   target language (default: en if the input contains kana, else ja)
   -s LANG   source language (default: detected by the model)
   -p / -P   polite / plain Japanese      -e  easy Japanese (ja(easy))
@@ -224,7 +224,7 @@ fn resolve_model(o: &Opts) -> Result<String, String> {
     for size in FALLBACK {
         if let Some(m) = find_model(size) {
             if size != DEFAULT_SIZE {
-                eprintln!("plamo-trans: {DEFAULT_SIZE} model not installed, using {size}");
+                eprintln!("trans: {DEFAULT_SIZE} model not installed, using {size}");
             }
             return Ok(m);
         }
@@ -386,7 +386,7 @@ fn run(o: Opts) -> Result<(), String> {
     if o.verbose {
         let s = |a: i64, b: i64| (b - a) as f64 / 1e6;
         eprintln!(
-            "[plamo-trans] target={target} load {:.2} s | prompt {n_prompt} tok {:.2} s ({:.0} t/s) | gen {n_gen} tok {:.2} s ({:.1} t/s)",
+            "[trans] target={target} load {:.2} s | prompt {n_prompt} tok {:.2} s ({:.0} t/s) | gen {n_gen} tok {:.2} s ({:.1} t/s)",
             s(t0, t_load),
             s(t_load, t_prompt),
             n_prompt as f64 / s(t_load, t_prompt),
@@ -430,7 +430,7 @@ fn run_forked(o: Opts) -> ExitCode {
             Ok(()) => 0,
             Err(e) if e == BROKEN_PIPE => 141,
             Err(e) => {
-                eprintln!("plamo-trans: {e}");
+                eprintln!("trans: {e}");
                 1
             }
         };
@@ -458,7 +458,7 @@ fn report(r: Result<(), String>) -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e == BROKEN_PIPE => ExitCode::from(141),
         Err(e) => {
-            eprintln!("plamo-trans: {e}");
+            eprintln!("trans: {e}");
             ExitCode::FAILURE
         }
     }
@@ -469,7 +469,7 @@ fn main() -> ExitCode {
     match parse_args() {
         Err(e) => {
             if !e.is_empty() {
-                eprintln!("plamo-trans: {e}");
+                eprintln!("trans: {e}");
             }
             eprintln!("{USAGE}");
             ExitCode::from(2)
