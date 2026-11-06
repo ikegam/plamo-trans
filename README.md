@@ -8,11 +8,11 @@ prints the result and exits.
 (Japanese: [README_jp.md](README_jp.md))
 
 ```
-$ plamo-trans 吾輩は猫である。名前はまだ無い。
+$ trans 吾輩は猫である。名前はまだ無い。
 I am a cat. I have no name yet.
-$ echo "Please let me know if you have any questions." | plamo-trans -p
+$ echo "Please let me know if you have any questions." | trans -p
 ご質問があればお知らせください。
-$ plamo-trans -t zh-hans 今日はいい天気ですね
+$ trans -t zh-hans 今日はいい天気ですね
 今天天气很好呢
 ```
 
@@ -32,9 +32,9 @@ plamo-trans is meant to be one more filter in a Unix pipeline, so it is built ar
    is streamed, so the next command in the pipeline starts receiving text right away.
 
    ```sh
-   wl-paste | plamo-trans | wl-copy           # translate the clipboard (Wayland)
-   git log -1 --format=%B | plamo-trans -t ja
-   plamo-trans -ff < notes.txt | less
+   wl-paste | trans | wl-copy           # translate the clipboard (Wayland)
+   git log -1 --format=%B | trans -t ja
+   trans -ff < notes.txt | less
    ```
 
 2. **Fast.** There is no server to start or keep running, so every run pays the whole start-up cost, and the
@@ -72,7 +72,7 @@ offload.
 ```sh
 scripts/build-llama.sh -DGGML_CUDA=ON  # or -DGGML_VULKAN=ON, or nothing for CPU only
 cargo build --release
-ln -s "$PWD/target/release/plamo-trans" ~/.local/bin/plamo-trans
+ln -s "$PWD/target/release/trans" ~/.local/bin/trans
 ```
 
 `build-llama.sh` clones llama.cpp into `./llama.cpp` at the commit this tool was tested with (override with
@@ -90,7 +90,7 @@ The binary finds the libraries through an rpath, so keep this directory where it
 ## Usage
 
 ```
-plamo-trans [options] [text...]       text from stdin when no text argument is given
+trans [options] [text...]       text from stdin when no text argument is given
   -t LANG   target language (default: en if the input contains kana, else ja)
   -s LANG   source language (default: detected by the model)
   -p / -P   polite / plain Japanese      -e  easy Japanese (ja(easy))

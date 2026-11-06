@@ -7,11 +7,11 @@ Preferred Networks の翻訳モデル [PLaMo 3 Translate](https://huggingface.co
 (English: [README.md](README.md))
 
 ```
-$ plamo-trans 吾輩は猫である。名前はまだ無い。
+$ trans 吾輩は猫である。名前はまだ無い。
 I am a cat. I have no name yet.
-$ echo "Please let me know if you have any questions." | plamo-trans -p
+$ echo "Please let me know if you have any questions." | trans -p
 ご質問があればお知らせください。
-$ plamo-trans -t zh-hans 今日はいい天気ですね
+$ trans -t zh-hans 今日はいい天気ですね
 今天天气很好呢
 ```
 
@@ -31,9 +31,9 @@ plamo-trans は、Unix のパイプラインに挟むフィルターの 1 つと
    流すので、パイプの次のコマンドはすぐに受け取り始められます。
 
    ```sh
-   wl-paste | plamo-trans | wl-copy           # クリップボードの文章を訳す(Wayland)
-   git log -1 --format=%B | plamo-trans -t ja
-   plamo-trans -ff < notes.txt | less
+   wl-paste | trans | wl-copy           # クリップボードの文章を訳す(Wayland)
+   git log -1 --format=%B | trans -t ja
+   trans -ff < notes.txt | less
    ```
 
 2. **速い。** 常駐サーバーを持たないので、毎回の実行で起動の時間がまるごとかかります。だから起動を詰めました。
@@ -69,7 +69,7 @@ scripts/download-model.sh 31b          # 31B Q4_K_M(19.5 GB)。-d 用
 ```sh
 scripts/build-llama.sh -DGGML_CUDA=ON  # Vulkan なら -DGGML_VULKAN=ON、CPU だけなら指定なし
 cargo build --release
-ln -s "$PWD/target/release/plamo-trans" ~/.local/bin/plamo-trans
+ln -s "$PWD/target/release/trans" ~/.local/bin/trans
 ```
 
 `build-llama.sh` は llama.cpp を `./llama.cpp` に clone し、動作を確認したコミットに合わせて
@@ -85,7 +85,7 @@ ln -s "$PWD/target/release/plamo-trans" ~/.local/bin/plamo-trans
 ## 使い方
 
 ```
-plamo-trans [オプション] [文章...]     文章を引数で渡さなければ標準入力から読みます
+trans [オプション] [文章...]     文章を引数で渡さなければ標準入力から読みます
   -t 言語    訳し先の言語(既定: 入力にかながあれば en、なければ ja)
   -s 言語    原文の言語(既定: モデルが判断)
   -p / -P    丁寧体 / 常体の日本語      -e  やさしい日本語(ja(easy))
