@@ -1,10 +1,53 @@
 # plamo-trans
 
-Preferred Networks の翻訳モデル [PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-31b) を、
-[llama.cpp](https://github.com/ggml-org/llama.cpp) を使って手元で動かすコマンドラインの翻訳ツールです。
-サーバーは常駐しません。実行するたびに GGUF のモデルを読み込み、翻訳して結果を出し、終了します。
+**翻訳を Unix のフィルターに。** `trans` は Preferred Networks の
+[PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-31b) を
+[llama.cpp](https://github.com/ggml-org/llama.cpp) で動かす翻訳コマンドです。サーバーは常駐せず、
+起動・翻訳・終了までが 0.8B モデルなら約 0.5 秒で終わります。
 
 (English: [README.md](README.md))
+
+<p align="center">
+  <img src="docs/demo.gif" width="720" alt="ターミナルで trans が日英・英日(敬体)・日中を翻訳している様子">
+</p>
+
+```sh
+wl-paste | trans | wl-copy             # クリップボードの文章を訳す(Wayland)
+git log -1 --format=%B | trans -t ja   # コミットメッセージを日本語で読む
+trans -ff < notes.txt | less           # ファイルを訳しながらページャーで読む
+```
+
+| モデル | 1 文(起動から終了まで) | 生成速度 |
+| --- | --- | --- |
+| 0.8B(`-ff`) | 約 0.5 秒 | — |
+| 2B(`-f`) | 約 0.75 秒 | — |
+| 8B(既定) | 約 1.2 秒 | 45 トークン/秒 |
+| 31B(`-d`) | 4〜5 秒 | 12.5 トークン/秒 |
+
+<sub>NVIDIA RTX Spark N1X、Linux arm64、CUDA 13.4、モデルファイルがページキャッシュに載った状態で計測。</sub>
+
+**なぜサーバーを使わないのか。** 常駐サーバーは温まっていれば速いものの、メモリと VRAM を一日中占有し、
+起動・監視・再起動の手間もかかります。plamo-trans は代わりに起動そのものを速くしました。PLaMo のトークナイザーの
+表作りを 0.76 秒から 0.2 秒に縮め、CUDA の起動をそれと並行させ、重みを複数のスレッドで読み、終了時に GPU の
+後片付けを待ちません。翻訳していないときは、何も動いていません。
+
+## すぐに試す
+
+```sh
+git clone https://github.com/ikegam/plamo-trans && cd plamo-trans
+scripts/build-llama.sh -DGGML_CUDA=ON    # Vulkan なら -DGGML_VULKAN=ON、CPU だけなら指定なし
+cargo build --release
+ln -s "$PWD/target/release/trans" ~/.local/bin/trans
+scripts/download-model.sh 0.8b           # 0.6 GB。先に PLaMo Community License を読んでください
+trans -ff 吾輩は猫である。
+```
+
+> [translate-shell](https://github.com/soimort/translate-shell) も `trans` という名前のコマンドを入れます。
+> 併用する場合は、別の名前でリンクしてください(例: `ln -s "$PWD/target/release/trans" ~/.local/bin/pt`)。
+
+詳しくは [モデルは含まれていません](#モデルは含まれていません)、[ビルド](#ビルド)、[使い方](#使い方) を参照してください。
+
+## できること
 
 ```
 $ trans 吾輩は猫である。名前はまだ無い。
@@ -29,12 +72,6 @@ plamo-trans は、Unix のパイプラインに挟むフィルターの 1 つと
 1. **テキストを受け取り、テキストを返す。** 文章は引数か標準入力から受け取り、標準出力には訳文だけを出します。
    ログは `-v` を付けたときしか出さず、エラーは標準エラーに出し、結果は終了コードで返します。訳文は生成した順に
    流すので、パイプの次のコマンドはすぐに受け取り始められます。
-
-   ```sh
-   wl-paste | trans | wl-copy           # クリップボードの文章を訳す(Wayland)
-   git log -1 --format=%B | trans -t ja
-   trans -ff < notes.txt | less
-   ```
 
 2. **速い。** 常駐サーバーを持たないので、毎回の実行で起動の時間がまるごとかかります。だから起動を詰めました。
    トークナイザーの表作りを約 4 倍速くし、CUDA の起動をそれと並行させ、重みを複数のスレッドで読み、終了時に
