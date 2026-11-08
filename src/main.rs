@@ -426,6 +426,7 @@ fn run(o: Opts) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 /// Translate in a forked worker and return to the shell as soon as the worker reports its result.
 ///
 /// Tearing down a process that holds a CUDA context and gigabytes of GPU/pinned memory takes the kernel
@@ -501,6 +502,11 @@ fn main() -> ExitCode {
             eprintln!("{USAGE}");
             ExitCode::from(2)
         }
+        // macOS: no fork. Metal compiles its shaders through XPC (MTLCompilerService), which does not work in a
+        // forked child, and there is no CUDA teardown to avoid.
+        #[cfg(target_os = "macos")]
+        Ok(o) => report(run(o)),
+        #[cfg(not(target_os = "macos"))]
         Ok(o) => run_forked(o),
     }
 }
