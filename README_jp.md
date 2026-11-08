@@ -133,7 +133,7 @@ llama.cpp は動作を確認したコミットのものを `vendor/llama.cpp` �
 
 1. `Cargo.toml` の `version` を上げてコミットし、タグを push します: `git tag v0.2.0 && git push origin v0.2.0`
 2. Release ワークフローがバイナリをビルドし、ソースの tarball と `SHA256SUMS` と一緒に GitHub のリリースに添付します。
-   続けて Homebrew の tap(`ikegam/homebrew-tap`、シークレット `HOMEBREW_TAP_TOKEN`)と AUR のパッケージ
+   続けて Homebrew の tap(`ikegam/homebrew-tap`、シークレット `HOMEBREW_TAP_DEPLOY_KEY`)と AUR のパッケージ
    (`plamo-trans`、シークレット `AUR_SSH_KEY`)も更新します。シークレットがない場合は `packaging/update.sh バージョン SHA256SUMS`
    を実行し、`packaging/homebrew/plamo-trans.rb` と `packaging/aur/{PKGBUILD,.SRCINFO}` を手で公開します。
 

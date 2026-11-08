@@ -137,7 +137,7 @@ faster:
 
 1. Bump `version` in `Cargo.toml`, commit, and push a tag: `git tag v0.2.0 && git push origin v0.2.0`.
 2. The Release workflow builds the binaries, attaches them with a source tarball and `SHA256SUMS` to a GitHub
-   release, and updates the Homebrew tap (`ikegam/homebrew-tap`, secret `HOMEBREW_TAP_TOKEN`) and the AUR package
+   release, and updates the Homebrew tap (`ikegam/homebrew-tap`, secret `HOMEBREW_TAP_DEPLOY_KEY`) and the AUR package
    (`plamo-trans`, secret `AUR_SSH_KEY`). Without the secrets, run `packaging/update.sh VERSION SHA256SUMS` and
    publish `packaging/homebrew/plamo-trans.rb` and `packaging/aur/{PKGBUILD,.SRCINFO}` by hand.
 

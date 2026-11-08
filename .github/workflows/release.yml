@@ -2,7 +2,7 @@ name: Release
 
 # Push a tag vX.Y.Z (matching the version in Cargo.toml) to build binaries and publish a GitHub release.
 # If the secrets are set, the Homebrew tap and the AUR package are updated as well:
-#   HOMEBREW_TAP_TOKEN  token with contents:write on ikegam/homebrew-tap
+#   HOMEBREW_TAP_DEPLOY_KEY  private SSH key of a deploy key with write access on ikegam/homebrew-tap
 #   AUR_SSH_KEY         private SSH key registered with the AUR account that owns plamo-trans
 on:
   push:
@@ -76,19 +76,22 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     env:
-      TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
     steps:
       - uses: actions/checkout@v5
-        if: env.TOKEN != ''
+        if: env.KEY != ''
       - uses: actions/download-artifact@v4
-        if: env.TOKEN != ''
+        if: env.KEY != ''
         with:
           name: dist
       - name: Update formula in ikegam/homebrew-tap
-        if: env.TOKEN != ''
+        if: env.KEY != ''
         run: |
           packaging/update.sh "${GITHUB_REF_NAME#v}" SHA256SUMS
-          git clone "https://x-access-token:$TOKEN@github.com/ikegam/homebrew-tap" tap
+          mkdir -p ~/.ssh
+          echo "$KEY" > ~/.ssh/tap && chmod 600 ~/.ssh/tap
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap -o StrictHostKeyChecking=accept-new"
+          git clone git@github.com:ikegam/homebrew-tap.git tap
           mkdir -p tap/Formula
           cp packaging/homebrew/plamo-trans.rb tap/Formula/
           cd tap
