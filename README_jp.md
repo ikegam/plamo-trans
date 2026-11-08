@@ -120,9 +120,9 @@ cargo build --release --features vulkan  # Vulkan
 向けに最適化されます。リリース版と同じく基準的な CPU(x86-64-v3)向けにするには `PLAMO_PORTABLE=1` を指定します。
 CMake に追加のオプションを渡すには `PLAMO_CMAKE_ARGS` を使います(例: `PLAMO_CMAKE_ARGS=-DCMAKE_CUDA_ARCHITECTURES=121`)。
 
-llama.cpp は動作を確認したコミットのものを `vendor/llama.cpp` に取り込んであり(libllama と CPU/CUDA/Vulkan/Metal
-のバックエンドに必要な部分だけ)、`patches/` のパッチを当て済みです。別のコミットに移るには
-`scripts/update-llama.sh コミット` を実行します(そのコミットだけを浅く取得します)。パッチはどれも起動を速くするためのものです。
+llama.cpp はこのリポジトリに含まれていません。最初のビルドで `scripts/fetch-llama.sh` が `llama.cpp.commit` に書かれた
+コミットを `./llama.cpp` に取得し(そのコミットの必要なディレクトリだけなので数秒です)、`patches/` のパッチを当てます。
+別のコミットを試すには `llama.cpp.commit` を書き換えます(または `scripts/fetch-llama.sh コミット`)。パッチはどれも起動を速くするためのものです。
 
 - `0001`: llama.cpp の PLaMo トークナイザーは、読み込みのたびに約 96 万行の検索表を作ります。この処理を
   string_view とスレッドで書き直しました。出来上がる表は同じまま、0.76 秒が 0.2 秒になります。
@@ -172,7 +172,7 @@ trs [オプション] [文章...]       文章を引数で渡さなければ標�
 
 ## ライセンス
 
-ソースコードは 4 条項 BSD ライセンスです([LICENSE](LICENSE))。llama.cpp(MIT、
-[vendor/llama.cpp/LICENSE](vendor/llama.cpp/LICENSE))は `vendor/llama.cpp` に手元のパッチ付きで同梱しています。PLaMo 3 Translate のモデルは PLaMo Community License です。
+ソースコードは 4 条項 BSD ライセンスです([LICENSE](LICENSE))。llama.cpp(MIT)はビルド時に取得して
+実行ファイルにリンクします。そのライセンスはパッケージに `LICENSE.llama.cpp` として同梱しています。PLaMo 3 Translate のモデルは PLaMo Community License です。
 
 このツールは Preferred Networks とは関係ありません。

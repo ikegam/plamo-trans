@@ -122,10 +122,10 @@ The result is one self-contained executable, `target/release/trs`: llama.cpp is 
 the CPU of the machine you build on; set `PLAMO_PORTABLE=1` for a baseline CPU (x86-64-v3), as the release binaries
 are. Extra CMake options can be passed in `PLAMO_CMAKE_ARGS`, e.g. `PLAMO_CMAKE_ARGS=-DCMAKE_CUDA_ARCHITECTURES=121`.
 
-llama.cpp is vendored in `vendor/llama.cpp` (only the parts needed for libllama and the CPU/CUDA/Vulkan/Metal
-backends) at the commit this tool was tested with, with the patches in `patches/` applied. To move to another
-commit, run `scripts/update-llama.sh COMMIT` (a shallow fetch of that one commit). The patches only make start-up
-faster:
+llama.cpp is not part of this repository. On the first build, `scripts/fetch-llama.sh` downloads the commit named
+in `llama.cpp.commit` into `./llama.cpp` (only that commit and only the directories needed, a few seconds) and
+applies the patches in `patches/`. To try another commit, change `llama.cpp.commit` (or run
+`scripts/fetch-llama.sh COMMIT`). The patches only make start-up faster:
 
 - `0001`: llama.cpp's PLaMo tokenizer builds a ~960k-row lookup table on every load. Rewritten with string views
   and threads: 0.76 s → 0.2 s, with an identical table.
@@ -173,12 +173,12 @@ GGUF. Input and output together are limited to the model's 32K-token training le
   (start, translate, exit) takes about 0.5 s with 0.8B, 0.75 s with 2B, 1.2 s with 8B (45 tokens/s) and 4–5 s
   with 31B (12.5 tokens/s). The fixed part is mostly CUDA start-up (0.2 s, now overlapped with the tokenizer); for
   8B, copying the weights to the GPU adds about 0.45 s.
-- llama.cpp's C API changes often. If you vendor another llama.cpp version and it fails to compile or link, go back
+- llama.cpp's C API changes often. If you move to another llama.cpp commit and it fails to compile or link, go back
   to the pinned commit.
 
 ## License
 
-The source code is under the 4-clause BSD license; see [LICENSE](LICENSE). llama.cpp (MIT, see
-[vendor/llama.cpp/LICENSE](vendor/llama.cpp/LICENSE)) is included in `vendor/llama.cpp` with local patches. The PLaMo 3 Translate models are under the PLaMo Community License.
+The source code is under the 4-clause BSD license; see [LICENSE](LICENSE). llama.cpp (MIT) is downloaded at build
+time and linked into the binary; its license is shipped with the packages as `LICENSE.llama.cpp`. The PLaMo 3 Translate models are under the PLaMo Community License.
 
 This tool is not affiliated with Preferred Networks.

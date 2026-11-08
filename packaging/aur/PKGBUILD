@@ -10,7 +10,7 @@ license=('BSD-4-Clause' 'MIT')
 depends=('gcc-libs' 'glibc' 'curl')
 makedepends=('cargo' 'cmake')
 conflicts=('trs-git')
-# static libraries from the vendored llama.cpp are linked by rustc, which does not pass -flto
+# the static llama.cpp libraries are linked by rustc, which does not pass -flto
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
 sha256sums=('0000000000000000000000000000000000000000000000000000000000000000')
@@ -24,6 +24,7 @@ prepare() {
 build() {
     cd "$pkgname-$pkgver"
     export RUSTUP_TOOLCHAIN=stable
+    # the release tarball includes the patched llama.cpp sources (no download here);
     # llama.cpp is built for this machine's CPU (GGML_NATIVE)
     cargo build --release --frozen
 }
@@ -32,6 +33,6 @@ package() {
     cd "$pkgname-$pkgver"
     install -Dm755 target/release/trs "$pkgdir/usr/bin/trs"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-    install -Dm644 vendor/llama.cpp/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE.llama.cpp"
+    install -Dm644 llama.cpp/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE.llama.cpp"
     install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }

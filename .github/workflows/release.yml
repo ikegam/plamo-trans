@@ -41,7 +41,7 @@ jobs:
           name=plamo-trans-${GITHUB_REF_NAME#v}-${{ matrix.target }}
           mkdir "$name"
           cp target/release/trs LICENSE README.md "$name/"
-          cp vendor/llama.cpp/LICENSE "$name/LICENSE.llama.cpp"
+          cp llama.cpp/LICENSE "$name/LICENSE.llama.cpp"
           "$name/trs" -V
           tar czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
@@ -59,9 +59,13 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Source tarball and checksums
+        # the source tarball carries the patched llama.cpp subset (~3 MB) so packages build offline
         run: |
           v=${GITHUB_REF_NAME#v}
-          git archive --prefix="plamo-trans-$v/" -o "dist/plamo-trans-$v.tar.gz" "$GITHUB_REF_NAME"
+          scripts/fetch-llama.sh
+          git archive --prefix="plamo-trans-$v/" -o "dist/plamo-trans-$v.tar" "$GITHUB_REF_NAME"
+          tar rf "dist/plamo-trans-$v.tar" --exclude=.git --transform "s|^|plamo-trans-$v/|" llama.cpp
+          gzip -9n "dist/plamo-trans-$v.tar"
           cd dist && sha256sum *.tar.gz > SHA256SUMS && cat SHA256SUMS
       - name: Publish
         env:

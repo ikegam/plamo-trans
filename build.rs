@@ -1,5 +1,6 @@
-//! Builds the vendored llama.cpp (vendor/llama.cpp, patched) as static libraries and links them in,
-//! so `cargo build --release` produces one self-contained `trs` binary.
+//! Builds llama.cpp (./llama.cpp at the commit in llama.cpp.commit, patched) as static libraries and links
+//! them in, so `cargo build --release` produces one self-contained `trs` binary. The source is fetched by
+//! scripts/fetch-llama.sh, which runs here when ./llama.cpp is missing or at another commit.
 //!
 //! GPU backends:  --features cuda | vulkan      (Metal is used automatically on macOS)
 //! Environment:
@@ -9,7 +10,13 @@
 use std::path::{Path, PathBuf};
 
 fn main() {
-    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("vendor/llama.cpp");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let src = root.join("llama.cpp");
+    let status = std::process::Command::new("sh")
+        .arg(root.join("scripts/fetch-llama.sh"))
+        .status()
+        .expect("cannot run scripts/fetch-llama.sh");
+    assert!(status.success(), "scripts/fetch-llama.sh failed");
     let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let cuda = std::env::var_os("CARGO_FEATURE_CUDA").is_some();
@@ -102,7 +109,9 @@ fn main() {
         .compile("pt_shim");
 
     println!("cargo:rerun-if-changed=shim.c");
-    println!("cargo:rerun-if-changed=vendor/llama.cpp");
+    println!("cargo:rerun-if-changed=llama.cpp.commit");
+    println!("cargo:rerun-if-changed=patches");
+    println!("cargo:rerun-if-changed=scripts/fetch-llama.sh");
     println!("cargo:rerun-if-env-changed=PLAMO_PORTABLE");
     println!("cargo:rerun-if-env-changed=PLAMO_CMAKE_ARGS");
 }

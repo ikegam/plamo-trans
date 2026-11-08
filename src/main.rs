@@ -215,7 +215,7 @@ fn find_model(size: &str) -> Option<String> {
     found.pop()
 }
 
-const LLAMA_COMMIT: &str = include_str!("../vendor/llama.cpp/COMMIT");
+const LLAMA_COMMIT: &str = include_str!("../llama.cpp.commit");
 const DOWNLOAD_SCRIPT: &str = include_str!("../scripts/download-model.sh");
 
 fn download_hint(size: &str) -> String {
