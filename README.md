@@ -1,11 +1,52 @@
 # plamo-trans
 
-A small command-line translator for
-[PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-31b) (Preferred Networks), running locally with
-[llama.cpp](https://github.com/ggml-org/llama.cpp). There is no server: each run loads the GGUF model, translates,
-prints the result and exits.
+**Local translation as a Unix filter.** `trans` runs
+[PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-31b) (Preferred Networks) on
+[llama.cpp](https://github.com/ggml-org/llama.cpp) with no server: start, translate, exit — in about half a second with the 0.8B model.
 
 (Japanese: [README_jp.md](README_jp.md))
+
+<p align="center">
+  <img src="docs/demo.gif" width="720" alt="trans translating Japanese to English, English to polite Japanese, and Japanese to Chinese in a terminal">
+</p>
+
+```sh
+wl-paste | trans | wl-copy             # translate the clipboard (Wayland)
+git log -1 --format=%B | trans -t ja   # read a commit message in Japanese
+trans -ff < notes.txt | less           # stream a file into a pager
+```
+
+| Model | One sentence, start → exit | Decode speed |
+| --- | --- | --- |
+| 0.8B (`-ff`) | ~0.5 s | — |
+| 2B (`-f`) | ~0.75 s | — |
+| 8B (default) | ~1.2 s | 45 tokens/s |
+| 31B (`-d`) | 4–5 s | 12.5 tokens/s |
+
+<sub>NVIDIA RTX Spark N1X, Linux arm64, CUDA 13.4, model file in the page cache.</sub>
+
+**Why no server?** A resident model server is fast once it is warm, but it holds RAM and VRAM all day and has to be
+started, watched and restarted. plamo-trans makes the cold start fast instead: the PLaMo tokenizer table is built
+in 0.2 s instead of 0.76 s, CUDA start-up overlaps with it, weights are read with many threads, and the process never
+waits for GPU teardown on exit. When you are not translating, nothing is running.
+
+## Quick start
+
+```sh
+git clone https://github.com/ikegam/plamo-trans && cd plamo-trans
+scripts/build-llama.sh -DGGML_CUDA=ON    # or -DGGML_VULKAN=ON, or nothing for CPU only
+cargo build --release
+ln -s "$PWD/target/release/trans" ~/.local/bin/trans
+scripts/download-model.sh 0.8b           # 0.6 GB — read the PLaMo Community License first
+trans -ff 吾輩は猫である。
+```
+
+> [translate-shell](https://github.com/soimort/translate-shell) also installs a command named `trans`.
+> If you use it, link this one under another name, e.g. `ln -s "$PWD/target/release/trans" ~/.local/bin/pt`.
+
+Details: [The model is not included](#the-model-is-not-included), [Build](#build), [Usage](#usage).
+
+## What it does
 
 ```
 $ trans 吾輩は猫である。名前はまだ無い。
@@ -30,12 +71,6 @@ plamo-trans is meant to be one more filter in a Unix pipeline, so it is built ar
 1. **Text in, text out.** Text comes from the arguments or stdin, the translation goes to stdout and nothing else
    does: logs stay off unless `-v` is given, errors go to stderr, and the exit code says what happened. Translation
    is streamed, so the next command in the pipeline starts receiving text right away.
-
-   ```sh
-   wl-paste | trans | wl-copy           # translate the clipboard (Wayland)
-   git log -1 --format=%B | trans -t ja
-   trans -ff < notes.txt | less
-   ```
 
 2. **Fast.** There is no server to start or keep running, so every run pays the whole start-up cost, and the
    start-up is where the work went: the tokenizer table is built 4x faster, CUDA start-up runs in parallel with it,
