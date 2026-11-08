@@ -1,19 +1,19 @@
 # plamo-trans
 
-**Local translation as a Unix filter.** `trans` runs
+**Local translation as a Unix filter.** `trs` runs
 [PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-31b) (Preferred Networks) on
 [llama.cpp](https://github.com/ggml-org/llama.cpp) with no server: start, translate, exit — in about half a second with the 0.8B model.
 
 (Japanese: [README_jp.md](README_jp.md))
 
 <p align="center">
-  <img src="docs/demo.gif" width="720" alt="trans translating Japanese to English, English to polite Japanese, and Japanese to Chinese in a terminal">
+  <img src="docs/demo.gif" width="720" alt="trs translating Japanese to English, English to polite Japanese, and Japanese to Chinese in a terminal">
 </p>
 
 ```sh
-wl-paste | trans | wl-copy             # translate the clipboard (Wayland)
-git log -1 --format=%B | trans -t ja   # read a commit message in Japanese
-trans -ff < notes.txt | less           # stream a file into a pager
+wl-paste | trs | wl-copy               # translate the clipboard (Wayland)
+git log -1 --format=%B | trs -t ja     # read a commit message in Japanese
+trs -ff < notes.txt | less             # stream a file into a pager
 ```
 
 | Model | One sentence, start → exit | Decode speed |
@@ -33,27 +33,34 @@ waits for GPU teardown on exit. When you are not translating, nothing is running
 ## Quick start
 
 ```sh
-git clone https://github.com/ikegam/plamo-trans && cd plamo-trans
-scripts/build-llama.sh -DGGML_CUDA=ON    # or -DGGML_VULKAN=ON, or nothing for CPU only
-cargo build --release
-ln -s "$PWD/target/release/trans" ~/.local/bin/trans
-scripts/download-model.sh 0.8b           # 0.6 GB — read the PLaMo Community License first
-trans -ff 吾輩は猫である。
+brew install ikegam/tap/plamo-trans      # macOS (Apple Silicon) / Linux
+yay -S plamo-trans                       # Arch Linux (AUR)
+trs --download 0.8b                      # 0.6 GB — read the PLaMo Community License first
+trs -ff 吾輩は猫である。
 ```
 
-> [translate-shell](https://github.com/soimort/translate-shell) also installs a command named `trans`.
-> If you use it, link this one under another name, e.g. `ln -s "$PWD/target/release/trans" ~/.local/bin/pt`.
+Prebuilt binaries (Linux x86_64/arm64, macOS arm64) are on the [releases page](https://github.com/ikegam/plamo-trans/releases):
+a single `trs` executable, copy it anywhere on your `PATH`. To build from source (needed for CUDA/Vulkan):
+
+```sh
+git clone https://github.com/ikegam/plamo-trans && cd plamo-trans
+cargo build --release                    # CPU (Metal on macOS); --features cuda or --features vulkan for GPU
+install target/release/trs ~/.local/bin/
+```
+
+> The command is named `trs` so that it does not clash with `trans` from
+> [translate-shell](https://github.com/soimort/translate-shell).
 
 Details: [The model is not included](#the-model-is-not-included), [Build](#build), [Usage](#usage).
 
 ## What it does
 
 ```
-$ trans 吾輩は猫である。名前はまだ無い。
+$ trs 吾輩は猫である。名前はまだ無い。
 I am a cat. I have no name yet.
-$ echo "Please let me know if you have any questions." | trans -p
+$ echo "Please let me know if you have any questions." | trs -p
 ご質問があればお知らせください。
-$ trans -t zh-hans 今日はいい天気ですね
+$ trs -t zh-hans 今日はいい天気ですね
 今天天气很好呢
 ```
 
@@ -90,29 +97,35 @@ This repository contains no model weights. Download them yourself from Hugging F
 non-commercial use is free; commercial use needs registration or a separate agreement depending on revenue).
 
 ```sh
-scripts/download-model.sh              # 8B  Q4_K_M (5.3 GB), the default
-scripts/download-model.sh 2b           # 2B  Q4_K_M (1.8 GB), for -f
-scripts/download-model.sh 0.8b         # 0.8B Q4_K_M (0.6 GB), for -ff
-scripts/download-model.sh 31b          # 31B Q4_K_M (19.5 GB), for -d
+trs --download 8b                      # 8B  Q4_K_M (5.3 GB), the default
+trs --download 2b                      # 2B  Q4_K_M (1.8 GB), for -f
+trs --download 0.8b                    # 0.8B Q4_K_M (0.6 GB), for -ff
+trs --download 31b                     # 31B Q4_K_M (19.5 GB), for -d
+trs --download 8b Q3_K_M               # another quantisation
 ```
 
-You only need the sizes you use. The files go to `${XDG_DATA_HOME:-~/.local/share}/plamo-trans/`. Downloads resume after interruption and the
+(`scripts/download-model.sh` does the same; it is embedded in the binary.) You only need the sizes you use. The files go to `${XDG_DATA_HOME:-~/.local/share}/plamo-trans/`. Downloads resume after interruption and the
 SHA-256 is checked against Hugging Face.
 
 ## Build
 
-Requirements: a C/C++ toolchain, CMake, git, Rust (edition 2024), and the CUDA toolkit or Vulkan SDK if you want GPU
+Requirements: a C/C++ toolchain, CMake, Rust (edition 2024), and the CUDA toolkit or Vulkan SDK if you want GPU
 offload.
 
 ```sh
-scripts/build-llama.sh -DGGML_CUDA=ON  # or -DGGML_VULKAN=ON, or nothing for CPU only
-cargo build --release
-ln -s "$PWD/target/release/trans" ~/.local/bin/trans
+cargo build --release                    # CPU only (Metal on macOS)
+cargo build --release --features cuda    # NVIDIA
+cargo build --release --features vulkan  # Vulkan
 ```
 
-`build-llama.sh` clones llama.cpp into `./llama.cpp` at the commit this tool was tested with (override with
-`LLAMA_REF=...`), applies the patches in `patches/` and builds its shared libraries. The patches only make
-start-up faster:
+The result is one self-contained executable, `target/release/trs`: llama.cpp is linked statically. It is built for
+the CPU of the machine you build on; set `PLAMO_PORTABLE=1` for a baseline CPU (x86-64-v3), as the release binaries
+are. Extra CMake options can be passed in `PLAMO_CMAKE_ARGS`, e.g. `PLAMO_CMAKE_ARGS=-DCMAKE_CUDA_ARCHITECTURES=121`.
+
+llama.cpp is not part of this repository. On the first build, `scripts/fetch-llama.sh` downloads the commit named
+in `llama.cpp.commit` into `./llama.cpp` (only that commit and only the directories needed, a few seconds) and
+applies the patches in `patches/`. To try another commit, change `llama.cpp.commit` (or run
+`scripts/fetch-llama.sh COMMIT`). The patches only make start-up faster:
 
 - `0001`: llama.cpp's PLaMo tokenizer builds a ~960k-row lookup table on every load. Rewritten with string views
   and threads: 0.76 s → 0.2 s, with an identical table.
@@ -120,12 +133,18 @@ start-up faster:
   tokenizer instead of before it.
 - `0003`: weights are read in larger chunks (up to 64 MiB) with several threads before the async upload to the GPU.
 
-The binary finds the libraries through an rpath, so keep this directory where it is. Set `LLAMA_DIR` to use an existing llama.cpp build tree instead.
+## Releasing
+
+1. Bump `version` in `Cargo.toml`, commit, and push a tag: `git tag v0.2.0 && git push origin v0.2.0`.
+2. The Release workflow builds the binaries, attaches them with a source tarball and `SHA256SUMS` to a GitHub
+   release, and updates the Homebrew tap (`ikegam/homebrew-tap`, secret `HOMEBREW_TAP_DEPLOY_KEY`) and the AUR package
+   (`plamo-trans`, secret `AUR_SSH_KEY`). Without the secrets, run `packaging/update.sh VERSION SHA256SUMS` and
+   publish `packaging/homebrew/plamo-trans.rb` and `packaging/aur/{PKGBUILD,.SRCINFO}` by hand.
 
 ## Usage
 
 ```
-trans [options] [text...]       text from stdin when no text argument is given
+trs [options] [text...]         text from stdin when no text argument is given
   -t LANG   target language (default: en if the input contains kana, else ja)
   -s LANG   source language (default: detected by the model)
   -p / -P   polite / plain Japanese      -e  easy Japanese (ja(easy))
@@ -134,6 +153,8 @@ trans [options] [text...]       text from stdin when no text argument is given
   -ff       0.8B model (fastest)     -f  2B (fast)     -d  31B (deep)
   -m FILE   model file (overrides the size options)
   -v        llama.cpp logs and timings on stderr
+  --download SIZE [QUANT]   download a model from Hugging Face
+  -V        version
 ```
 
 Without a size option the 8B model is used (or `$PLAMO_MODEL` if set). If 8B is not installed, the nearest
@@ -152,12 +173,12 @@ GGUF. Input and output together are limited to the model's 32K-token training le
   (start, translate, exit) takes about 0.5 s with 0.8B, 0.75 s with 2B, 1.2 s with 8B (45 tokens/s) and 4–5 s
   with 31B (12.5 tokens/s). The fixed part is mostly CUDA start-up (0.2 s, now overlapped with the tokenizer); for
   8B, copying the weights to the GPU adds about 0.45 s.
-- llama.cpp's C API changes often. If you build against another llama.cpp version and it fails to compile or link,
-  go back to the pinned commit.
+- llama.cpp's C API changes often. If you move to another llama.cpp commit and it fails to compile or link, go back
+  to the pinned commit.
 
 ## License
 
-The source code is under the 4-clause BSD license; see [LICENSE](LICENSE). llama.cpp (MIT) is fetched and built
-separately and is not part of this repository. The PLaMo 3 Translate models are under the PLaMo Community License.
+The source code is under the 4-clause BSD license; see [LICENSE](LICENSE). llama.cpp (MIT) is downloaded at build
+time and linked into the binary; its license is shipped with the packages as `LICENSE.llama.cpp`. The PLaMo 3 Translate models are under the PLaMo Community License.
 
 This tool is not affiliated with Preferred Networks.

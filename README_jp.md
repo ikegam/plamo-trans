@@ -1,6 +1,6 @@
 # plamo-trans
 
-**翻訳を Unix のフィルターに。** `trans` は Preferred Networks の
+**翻訳を Unix のフィルターに。** `trs` は Preferred Networks の
 [PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-31b) を
 [llama.cpp](https://github.com/ggml-org/llama.cpp) で動かす翻訳コマンドです。サーバーは常駐せず、
 起動・翻訳・終了までが 0.8B モデルなら約 0.5 秒で終わります。
@@ -8,13 +8,13 @@
 (English: [README.md](README.md))
 
 <p align="center">
-  <img src="docs/demo.gif" width="720" alt="ターミナルで trans が日英・英日(敬体)・日中を翻訳している様子">
+  <img src="docs/demo.gif" width="720" alt="ターミナルで trs が日英・英日(敬体)・日中を翻訳している様子">
 </p>
 
 ```sh
-wl-paste | trans | wl-copy             # クリップボードの文章を訳す(Wayland)
-git log -1 --format=%B | trans -t ja   # コミットメッセージを日本語で読む
-trans -ff < notes.txt | less           # ファイルを訳しながらページャーで読む
+wl-paste | trs | wl-copy               # クリップボードの文章を訳す(Wayland)
+git log -1 --format=%B | trs -t ja     # コミットメッセージを日本語で読む
+trs -ff < notes.txt | less             # ファイルを訳しながらページャーで読む
 ```
 
 | モデル | 1 文(起動から終了まで) | 生成速度 |
@@ -34,27 +34,33 @@ trans -ff < notes.txt | less           # ファイルを訳しながらページ
 ## すぐに試す
 
 ```sh
-git clone https://github.com/ikegam/plamo-trans && cd plamo-trans
-scripts/build-llama.sh -DGGML_CUDA=ON    # Vulkan なら -DGGML_VULKAN=ON、CPU だけなら指定なし
-cargo build --release
-ln -s "$PWD/target/release/trans" ~/.local/bin/trans
-scripts/download-model.sh 0.8b           # 0.6 GB。先に PLaMo Community License を読んでください
-trans -ff 吾輩は猫である。
+brew install ikegam/tap/plamo-trans      # macOS(Apple Silicon)/ Linux
+yay -S plamo-trans                       # Arch Linux(AUR)
+trs --download 0.8b                      # 0.6 GB。先に PLaMo Community License を読んでください
+trs -ff 吾輩は猫である。
 ```
 
-> [translate-shell](https://github.com/soimort/translate-shell) も `trans` という名前のコマンドを入れます。
-> 併用する場合は、別の名前でリンクしてください(例: `ln -s "$PWD/target/release/trans" ~/.local/bin/pt`)。
+ビルド済みのバイナリ(Linux x86_64/arm64、macOS arm64)は [Releases](https://github.com/ikegam/plamo-trans/releases) にあります。
+中身は `trs` という実行ファイル 1 つなので、`PATH` の通った場所に置くだけで使えます。ソースからビルドする場合(CUDA/Vulkan はこちら):
+
+```sh
+git clone https://github.com/ikegam/plamo-trans && cd plamo-trans
+cargo build --release                    # CPU(macOS では Metal)。GPU は --features cuda か --features vulkan
+install target/release/trs ~/.local/bin/
+```
+
+> [translate-shell](https://github.com/soimort/translate-shell) の `trans` と被らないよう、コマンド名は `trs` にしています。
 
 詳しくは [モデルは含まれていません](#モデルは含まれていません)、[ビルド](#ビルド)、[使い方](#使い方) を参照してください。
 
 ## できること
 
 ```
-$ trans 吾輩は猫である。名前はまだ無い。
+$ trs 吾輩は猫である。名前はまだ無い。
 I am a cat. I have no name yet.
-$ echo "Please let me know if you have any questions." | trans -p
+$ echo "Please let me know if you have any questions." | trs -p
 ご質問があればお知らせください。
-$ trans -t zh-hans 今日はいい天気ですね
+$ trs -t zh-hans 今日はいい天気ですね
 今天天气很好呢
 ```
 
@@ -90,39 +96,51 @@ plamo-trans は、Unix のパイプラインに挟むフィルターの 1 つと
 (個人利用と非商用利用は無料です。商用利用は、売上の規模によって登録か個別の契約が必要です)。
 
 ```sh
-scripts/download-model.sh              # 8B  Q4_K_M(5.3 GB)。既定で使うモデル
-scripts/download-model.sh 2b           # 2B  Q4_K_M(1.8 GB)。-f 用
-scripts/download-model.sh 0.8b         # 0.8B Q4_K_M(0.6 GB)。-ff 用
-scripts/download-model.sh 31b          # 31B Q4_K_M(19.5 GB)。-d 用
+trs --download 8b                      # 8B  Q4_K_M(5.3 GB)。既定で使うモデル
+trs --download 2b                      # 2B  Q4_K_M(1.8 GB)。-f 用
+trs --download 0.8b                    # 0.8B Q4_K_M(0.6 GB)。-ff 用
+trs --download 31b                     # 31B Q4_K_M(19.5 GB)。-d 用
+trs --download 8b Q3_K_M               # 別の量子化版
 ```
 
-使うサイズだけ入れれば十分です。保存先は `${XDG_DATA_HOME:-~/.local/share}/plamo-trans/` です。途中で切れても続きからダウンロードし、
+(`scripts/download-model.sh` でも同じです。このスクリプトは実行ファイルに埋め込まれています。)使うサイズだけ入れれば十分です。保存先は `${XDG_DATA_HOME:-~/.local/share}/plamo-trans/` です。途中で切れても続きからダウンロードし、
 最後に Hugging Face の SHA-256 と照合します。
 
 ## ビルド
 
-必要なもの: C/C++ のコンパイラ、CMake、git、Rust(edition 2024)。GPU を使う場合は CUDA toolkit か Vulkan SDK。
+必要なもの: C/C++ のコンパイラ、CMake、Rust(edition 2024)。GPU を使う場合は CUDA toolkit か Vulkan SDK。
 
 ```sh
-scripts/build-llama.sh -DGGML_CUDA=ON  # Vulkan なら -DGGML_VULKAN=ON、CPU だけなら指定なし
-cargo build --release
-ln -s "$PWD/target/release/trans" ~/.local/bin/trans
+cargo build --release                    # CPU のみ(macOS では Metal)
+cargo build --release --features cuda    # NVIDIA
+cargo build --release --features vulkan  # Vulkan
 ```
 
-`build-llama.sh` は llama.cpp を `./llama.cpp` に clone し、動作を確認したコミットに合わせて
-(`LLAMA_REF=...` で変更できます)、`patches/` のパッチを当てて共有ライブラリをビルドします。パッチはどれも起動を速くするためのものです。
+できあがるのは単体で動く実行ファイル `target/release/trs` 1 つです(llama.cpp は静的リンク)。ビルドしたマシンの CPU
+向けに最適化されます。リリース版と同じく基準的な CPU(x86-64-v3)向けにするには `PLAMO_PORTABLE=1` を指定します。
+CMake に追加のオプションを渡すには `PLAMO_CMAKE_ARGS` を使います(例: `PLAMO_CMAKE_ARGS=-DCMAKE_CUDA_ARCHITECTURES=121`)。
+
+llama.cpp はこのリポジトリに含まれていません。最初のビルドで `scripts/fetch-llama.sh` が `llama.cpp.commit` に書かれた
+コミットを `./llama.cpp` に取得し(そのコミットの必要なディレクトリだけなので数秒です)、`patches/` のパッチを当てます。
+別のコミットを試すには `llama.cpp.commit` を書き換えます(または `scripts/fetch-llama.sh コミット`)。パッチはどれも起動を速くするためのものです。
 
 - `0001`: llama.cpp の PLaMo トークナイザーは、読み込みのたびに約 96 万行の検索表を作ります。この処理を
   string_view とスレッドで書き直しました。出来上がる表は同じまま、0.76 秒が 0.2 秒になります。
 - `0002`: 計算装置の準備(CUDA の起動、約 0.2 秒)を、語彙の読み込みとトークナイザーの準備の前ではなく、同時に行います。
 - `0003`: 重みを GPU に送る前の読み込みを、大きめのチャンク(最大 64 MiB)で、複数のスレッドで行います。
 
-実行ファイルは rpath でこのライブラリを探すので、このディレクトリは移動しないでください。既存の llama.cpp のビルドを使うときは `LLAMA_DIR` を指定します。
+## リリース
+
+1. `Cargo.toml` の `version` を上げてコミットし、タグを push します: `git tag v0.2.0 && git push origin v0.2.0`
+2. Release ワークフローがバイナリをビルドし、ソースの tarball と `SHA256SUMS` と一緒に GitHub のリリースに添付します。
+   続けて Homebrew の tap(`ikegam/homebrew-tap`、シークレット `HOMEBREW_TAP_DEPLOY_KEY`)と AUR のパッケージ
+   (`plamo-trans`、シークレット `AUR_SSH_KEY`)も更新します。シークレットがない場合は `packaging/update.sh バージョン SHA256SUMS`
+   を実行し、`packaging/homebrew/plamo-trans.rb` と `packaging/aur/{PKGBUILD,.SRCINFO}` を手で公開します。
 
 ## 使い方
 
 ```
-trans [オプション] [文章...]     文章を引数で渡さなければ標準入力から読みます
+trs [オプション] [文章...]       文章を引数で渡さなければ標準入力から読みます
   -t 言語    訳し先の言語(既定: 入力にかながあれば en、なければ ja)
   -s 言語    原文の言語(既定: モデルが判断)
   -p / -P    丁寧体 / 常体の日本語      -e  やさしい日本語(ja(easy))
@@ -131,6 +149,8 @@ trans [オプション] [文章...]     文章を引数で渡さなければ標�
   -ff        0.8B モデル(最速)     -f  2B(速い)     -d  31B(じっくり)
   -m ファイル モデルのファイル(サイズの指定より優先)
   -v         llama.cpp のログと所要時間を標準エラーに出す
+  --download サイズ [量子化]   Hugging Face からモデルをダウンロード
+  -V         バージョン
 ```
 
 サイズを指定しなければ 8B を使います(`$PLAMO_MODEL` があればそれを使います)。8B が入っていなければ、
@@ -152,7 +172,7 @@ trans [オプション] [文章...]     文章を引数で渡さなければ標�
 
 ## ライセンス
 
-ソースコードは 4 条項 BSD ライセンスです([LICENSE](LICENSE))。llama.cpp(MIT)は別に取得してビルドするもので、
-このリポジトリには含みません。PLaMo 3 Translate のモデルは PLaMo Community License です。
+ソースコードは 4 条項 BSD ライセンスです([LICENSE](LICENSE))。llama.cpp(MIT)はビルド時に取得して
+実行ファイルにリンクします。そのライセンスはパッケージに `LICENSE.llama.cpp` として同梱しています。PLaMo 3 Translate のモデルは PLaMo Community License です。
 
 このツールは Preferred Networks とは関係ありません。

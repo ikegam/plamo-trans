@@ -67,6 +67,7 @@ unsafe extern "C" {
     fn write(fd: c_int, buf: *const c_void, n: usize) -> isize;
     fn close(fd: c_int) -> c_int;
     fn waitpid(pid: c_int, status: *mut c_int, options: c_int) -> c_int;
+    #[cfg(target_os = "linux")]
     fn prctl(option: c_int, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> c_int;
     fn getppid() -> c_int;
     fn getpid() -> c_int;
@@ -117,7 +118,7 @@ fn batch_set(b: *mut Batch, toks: &[Token], pos0: i32, logits_last: bool) {
 
 // ---- options and prompt ----
 
-const USAGE: &str = "usage: trans [options] [text...]   (text from stdin when no text argument)
+const USAGE: &str = "usage: trs [options] [text...]   (text from stdin when no text argument)
   -t LANG   target language (default: en if the input contains kana, else ja)
   -s LANG   source language (default: detected by the model)
   -p / -P   polite / plain Japanese      -e  easy Japanese (ja(easy))
@@ -128,6 +129,8 @@ const USAGE: &str = "usage: trans [options] [text...]   (text from stdin when no
   -m FILE   model file (overrides the size options; default also $PLAMO_MODEL)
             models live in ${XDG_DATA_HOME:-~/.local/share}/plamo-trans/
   -v        llama.cpp logs and timings on stderr
+  --download SIZE [QUANT]   download a model (0.8b 2b 8b 31b) from Hugging Face
+  -V, --version
 LANG: en ja zh-hans zh-hant ko fr de es it pt ru ...";
 
 #[derive(Default)]
@@ -162,6 +165,14 @@ fn parse_args() -> Result<Opts, String> {
             "-e" => o.target = Some("ja(easy)".into()),
             "-v" => o.verbose = true,
             "-h" | "--help" => return Err(String::new()),
+            "-V" | "--version" => {
+                println!("trs (plamo-trans) {} llama.cpp {}", env!("CARGO_PKG_VERSION"), LLAMA_COMMIT.trim());
+                std::process::exit(0);
+            }
+            "--download" => {
+                let rest: Vec<String> = args.collect();
+                std::process::exit(download(&rest));
+            }
             "--" => o.text.extend(args.by_ref()),
             s if s.starts_with('-') && s.len() > 1 => return Err(format!("unknown option {s}")),
             _ => o.text.push(a),
@@ -204,11 +215,26 @@ fn find_model(size: &str) -> Option<String> {
     found.pop()
 }
 
+const LLAMA_COMMIT: &str = include_str!("../llama.cpp.commit");
+const DOWNLOAD_SCRIPT: &str = include_str!("../scripts/download-model.sh");
+
 fn download_hint(size: &str) -> String {
-    format!(
-        "the {size} model is not installed; download it with\n  {}/scripts/download-model.sh {size}",
-        env!("CARGO_MANIFEST_DIR")
-    )
+    format!("the {size} model is not installed; download it with\n  trs --download {size}")
+}
+
+/// `trs --download SIZE [QUANT]`: run the embedded scripts/download-model.sh.
+fn download(args: &[String]) -> i32 {
+    if args.is_empty() || args.len() > 2 {
+        eprintln!("usage: trs --download SIZE [QUANT]   SIZE: 0.8b 2b 8b 31b");
+        return 2;
+    }
+    match std::process::Command::new("sh").arg("-c").arg(DOWNLOAD_SCRIPT).arg("download-model").args(args).status() {
+        Ok(s) => s.code().unwrap_or(1),
+        Err(e) => {
+            eprintln!("trs: cannot run sh: {e}");
+            1
+        }
+    }
 }
 
 fn resolve_model(o: &Opts) -> Result<String, String> {
@@ -224,7 +250,7 @@ fn resolve_model(o: &Opts) -> Result<String, String> {
     for size in FALLBACK {
         if let Some(m) = find_model(size) {
             if size != DEFAULT_SIZE {
-                eprintln!("trans: {DEFAULT_SIZE} model not installed, using {size}");
+                eprintln!("trs: {DEFAULT_SIZE} model not installed, using {size}");
             }
             return Ok(m);
         }
@@ -386,7 +412,7 @@ fn run(o: Opts) -> Result<(), String> {
     if o.verbose {
         let s = |a: i64, b: i64| (b - a) as f64 / 1e6;
         eprintln!(
-            "[trans] target={target} load {:.2} s | prompt {n_prompt} tok {:.2} s ({:.0} t/s) | gen {n_gen} tok {:.2} s ({:.1} t/s)",
+            "[trs] target={target} load {:.2} s | prompt {n_prompt} tok {:.2} s ({:.0} t/s) | gen {n_gen} tok {:.2} s ({:.1} t/s)",
             s(t0, t_load),
             s(t_load, t_prompt),
             n_prompt as f64 / s(t_load, t_prompt),
@@ -400,6 +426,7 @@ fn run(o: Opts) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 /// Translate in a forked worker and return to the shell as soon as the worker reports its result.
 ///
 /// Tearing down a process that holds a CUDA context and gigabytes of GPU/pinned memory takes the kernel
@@ -420,6 +447,7 @@ fn run_forked(o: Opts) -> ExitCode {
     if pid == 0 {
         // worker: die with the parent (e.g. when only the parent is killed), PR_SET_PDEATHSIG = 1, SIGKILL = 9
         unsafe {
+            #[cfg(target_os = "linux")]
             prctl(1, 9, 0, 0, 0);
             if getppid() != parent {
                 _exit(130);
@@ -430,7 +458,7 @@ fn run_forked(o: Opts) -> ExitCode {
             Ok(()) => 0,
             Err(e) if e == BROKEN_PIPE => 141,
             Err(e) => {
-                eprintln!("trans: {e}");
+                eprintln!("trs: {e}");
                 1
             }
         };
@@ -458,7 +486,7 @@ fn report(r: Result<(), String>) -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e == BROKEN_PIPE => ExitCode::from(141),
         Err(e) => {
-            eprintln!("trans: {e}");
+            eprintln!("trs: {e}");
             ExitCode::FAILURE
         }
     }
@@ -469,11 +497,16 @@ fn main() -> ExitCode {
     match parse_args() {
         Err(e) => {
             if !e.is_empty() {
-                eprintln!("trans: {e}");
+                eprintln!("trs: {e}");
             }
             eprintln!("{USAGE}");
             ExitCode::from(2)
         }
+        // macOS: no fork. Metal compiles its shaders through XPC (MTLCompilerService), which does not work in a
+        // forked child, and there is no CUDA teardown to avoid.
+        #[cfg(target_os = "macos")]
+        Ok(o) => report(run(o)),
+        #[cfg(not(target_os = "macos"))]
         Ok(o) => run_forked(o),
     }
 }
