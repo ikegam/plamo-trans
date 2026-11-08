@@ -8,8 +8,10 @@ class PlamoTrans < Formula
 
   on_macos do
     depends_on arch: :arm64
-    url "https://github.com/ikegam/plamo-trans/releases/download/v#{version}/plamo-trans-#{version}-macos-arm64.tar.gz"
-    sha256 "0000000000000000000000000000000000000000000000000000000000000000" # macos-arm64
+    on_arm do
+      url "https://github.com/ikegam/plamo-trans/releases/download/v#{version}/plamo-trans-#{version}-macos-arm64.tar.gz"
+      sha256 "0000000000000000000000000000000000000000000000000000000000000000" # macos-arm64
+    end
   end
 
   on_linux do
