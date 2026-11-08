@@ -1,6 +1,6 @@
 # plamo-trans
 
-**翻訳を Unix のフィルターに。** `trans` は Preferred Networks の
+**翻訳を Unix のフィルターに。** `trs` は Preferred Networks の
 [PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-31b) を
 [llama.cpp](https://github.com/ggml-org/llama.cpp) で動かす翻訳コマンドです。サーバーは常駐せず、
 起動・翻訳・終了までが 0.8B モデルなら約 0.5 秒で終わります。
@@ -8,13 +8,13 @@
 (English: [README.md](README.md))
 
 <p align="center">
-  <img src="docs/demo.gif" width="720" alt="ターミナルで trans が日英・英日(敬体)・日中を翻訳している様子">
+  <img src="docs/demo.gif" width="720" alt="ターミナルで trs が日英・英日(敬体)・日中を翻訳している様子">
 </p>
 
 ```sh
-wl-paste | trans | wl-copy             # クリップボードの文章を訳す(Wayland)
-git log -1 --format=%B | trans -t ja   # コミットメッセージを日本語で読む
-trans -ff < notes.txt | less           # ファイルを訳しながらページャーで読む
+wl-paste | trs | wl-copy               # クリップボードの文章を訳す(Wayland)
+git log -1 --format=%B | trs -t ja     # コミットメッセージを日本語で読む
+trs -ff < notes.txt | less             # ファイルを訳しながらページャーで読む
 ```
 
 | モデル | 1 文(起動から終了まで) | 生成速度 |
@@ -36,32 +36,31 @@ trans -ff < notes.txt | less           # ファイルを訳しながらページ
 ```sh
 brew install ikegam/tap/plamo-trans      # macOS(Apple Silicon)/ Linux
 yay -S plamo-trans                       # Arch Linux(AUR)
-trans --download 0.8b                    # 0.6 GB。先に PLaMo Community License を読んでください
-trans -ff 吾輩は猫である。
+trs --download 0.8b                      # 0.6 GB。先に PLaMo Community License を読んでください
+trs -ff 吾輩は猫である。
 ```
 
 ビルド済みのバイナリ(Linux x86_64/arm64、macOS arm64)は [Releases](https://github.com/ikegam/plamo-trans/releases) にあります。
-中身は `trans` という実行ファイル 1 つなので、`PATH` の通った場所に置くだけで使えます。ソースからビルドする場合(CUDA/Vulkan はこちら):
+中身は `trs` という実行ファイル 1 つなので、`PATH` の通った場所に置くだけで使えます。ソースからビルドする場合(CUDA/Vulkan はこちら):
 
 ```sh
 git clone https://github.com/ikegam/plamo-trans && cd plamo-trans
 cargo build --release                    # CPU(macOS では Metal)。GPU は --features cuda か --features vulkan
-install target/release/trans ~/.local/bin/
+install target/release/trs ~/.local/bin/
 ```
 
-> [translate-shell](https://github.com/soimort/translate-shell) も `trans` という名前のコマンドを入れるため、パッケージは
-> これと競合します。併用する場合はソースからビルドし、別の名前で入れてください(例: `install target/release/trans ~/.local/bin/pt`)。
+> [translate-shell](https://github.com/soimort/translate-shell) の `trans` と被らないよう、コマンド名は `trs` にしています。
 
 詳しくは [モデルは含まれていません](#モデルは含まれていません)、[ビルド](#ビルド)、[使い方](#使い方) を参照してください。
 
 ## できること
 
 ```
-$ trans 吾輩は猫である。名前はまだ無い。
+$ trs 吾輩は猫である。名前はまだ無い。
 I am a cat. I have no name yet.
-$ echo "Please let me know if you have any questions." | trans -p
+$ echo "Please let me know if you have any questions." | trs -p
 ご質問があればお知らせください。
-$ trans -t zh-hans 今日はいい天気ですね
+$ trs -t zh-hans 今日はいい天気ですね
 今天天气很好呢
 ```
 
@@ -97,11 +96,11 @@ plamo-trans は、Unix のパイプラインに挟むフィルターの 1 つと
 (個人利用と非商用利用は無料です。商用利用は、売上の規模によって登録か個別の契約が必要です)。
 
 ```sh
-trans --download 8b                    # 8B  Q4_K_M(5.3 GB)。既定で使うモデル
-trans --download 2b                    # 2B  Q4_K_M(1.8 GB)。-f 用
-trans --download 0.8b                  # 0.8B Q4_K_M(0.6 GB)。-ff 用
-trans --download 31b                   # 31B Q4_K_M(19.5 GB)。-d 用
-trans --download 8b Q3_K_M             # 別の量子化版
+trs --download 8b                      # 8B  Q4_K_M(5.3 GB)。既定で使うモデル
+trs --download 2b                      # 2B  Q4_K_M(1.8 GB)。-f 用
+trs --download 0.8b                    # 0.8B Q4_K_M(0.6 GB)。-ff 用
+trs --download 31b                     # 31B Q4_K_M(19.5 GB)。-d 用
+trs --download 8b Q3_K_M               # 別の量子化版
 ```
 
 (`scripts/download-model.sh` でも同じです。このスクリプトは実行ファイルに埋め込まれています。)使うサイズだけ入れれば十分です。保存先は `${XDG_DATA_HOME:-~/.local/share}/plamo-trans/` です。途中で切れても続きからダウンロードし、
@@ -117,7 +116,7 @@ cargo build --release --features cuda    # NVIDIA
 cargo build --release --features vulkan  # Vulkan
 ```
 
-できあがるのは単体で動く実行ファイル `target/release/trans` 1 つです(llama.cpp は静的リンク)。ビルドしたマシンの CPU
+できあがるのは単体で動く実行ファイル `target/release/trs` 1 つです(llama.cpp は静的リンク)。ビルドしたマシンの CPU
 向けに最適化されます。リリース版と同じく基準的な CPU(x86-64-v3)向けにするには `PLAMO_PORTABLE=1` を指定します。
 CMake に追加のオプションを渡すには `PLAMO_CMAKE_ARGS` を使います(例: `PLAMO_CMAKE_ARGS=-DCMAKE_CUDA_ARCHITECTURES=121`)。
 
@@ -141,7 +140,7 @@ llama.cpp は動作を確認したコミットのものを `vendor/llama.cpp` �
 ## 使い方
 
 ```
-trans [オプション] [文章...]     文章を引数で渡さなければ標準入力から読みます
+trs [オプション] [文章...]       文章を引数で渡さなければ標準入力から読みます
   -t 言語    訳し先の言語(既定: 入力にかながあれば en、なければ ja)
   -s 言語    原文の言語(既定: モデルが判断)
   -p / -P    丁寧体 / 常体の日本語      -e  やさしい日本語(ja(easy))

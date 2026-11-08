@@ -20,11 +20,11 @@ jobs:
           # build on the oldest supported Ubuntu so the binaries run on older glibc
           - { os: ubuntu-22.04, target: linux-x86_64, portable: '1' }
           - { os: ubuntu-22.04-arm, target: linux-arm64, portable: '1' }
-          # Apple Silicon: native M1 flags run on every M-series chip; Metal is built in
-          - { os: macos-14, target: macos-arm64, portable: '' }
+          # Apple Silicon: native flags of the runner (do not build on a newer chip than the oldest one to support); Metal is built in
+          - { os: macos-latest, target: macos-arm64, portable: '' }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: Check version
         run: |
@@ -40,9 +40,9 @@ jobs:
         run: |
           name=plamo-trans-${GITHUB_REF_NAME#v}-${{ matrix.target }}
           mkdir "$name"
-          cp target/release/trans LICENSE README.md "$name/"
+          cp target/release/trs LICENSE README.md "$name/"
           cp vendor/llama.cpp/LICENSE "$name/LICENSE.llama.cpp"
-          "$name/trans" -V
+          "$name/trs" -V
           tar czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
         with:
@@ -53,7 +53,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -78,7 +78,7 @@ jobs:
     env:
       TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: env.TOKEN != ''
       - uses: actions/download-artifact@v4
         if: env.TOKEN != ''
@@ -104,7 +104,7 @@ jobs:
     env:
       KEY: ${{ secrets.AUR_SSH_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: env.KEY != ''
       - uses: actions/download-artifact@v4
         if: env.KEY != ''

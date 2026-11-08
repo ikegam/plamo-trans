@@ -1,5 +1,5 @@
 //! Builds the vendored llama.cpp (vendor/llama.cpp, patched) as static libraries and links them in,
-//! so `cargo build --release` produces one self-contained `trans` binary.
+//! so `cargo build --release` produces one self-contained `trs` binary.
 //!
 //! GPU backends:  --features cuda | vulkan      (Metal is used automatically on macOS)
 //! Environment:

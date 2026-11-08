@@ -16,22 +16,22 @@ Type "export PS1='$ '" Enter
 Type "clear" Enter
 Show
 
-Type "trans 吾輩は猫である。名前はまだ無い。"
+Type "trs 吾輩は猫である。名前はまだ無い。"
 Sleep 300ms
 Enter
 Sleep 2s
 
-Type `echo "Please let me know if you have any questions." | trans -p`
+Type `echo "Please let me know if you have any questions." | trs -p`
 Sleep 300ms
 Enter
 Sleep 2s
 
-Type "trans -t zh-hans 今日はいい天気ですね"
+Type "trs -t zh-hans 今日はいい天気ですね"
 Sleep 300ms
 Enter
 Sleep 2s
 
-Type "time trans -ff 吾輩は猫である。"
+Type "time trs -ff 吾輩は猫である。"
 Sleep 300ms
 Enter
 Sleep 3s

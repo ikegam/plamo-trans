@@ -2,7 +2,7 @@
 # Download a PLaMo 3 Translate GGUF from Hugging Face (resumable) and check its SHA-256.
 # Usage: download-model.sh [SIZE [QUANT]]     default: 8b Q4_K_M
 #   SIZE: 0.8b 2b 8b 31b     QUANT: Q4_K_M Q3_K_M Q2_K ... (see the model repository)
-# Also available as `trans --download SIZE [QUANT]` (this script is embedded in the binary).
+# Also available as `trs --download SIZE [QUANT]` (this script is embedded in the binary).
 # The model is under the PLaMo Community License; read it before use:
 #   https://huggingface.co/pfnet/plamo-3-translate-31b-GGUF
 set -eu

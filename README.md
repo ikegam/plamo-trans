@@ -1,19 +1,19 @@
 # plamo-trans
 
-**Local translation as a Unix filter.** `trans` runs
+**Local translation as a Unix filter.** `trs` runs
 [PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-31b) (Preferred Networks) on
 [llama.cpp](https://github.com/ggml-org/llama.cpp) with no server: start, translate, exit — in about half a second with the 0.8B model.
 
 (Japanese: [README_jp.md](README_jp.md))
 
 <p align="center">
-  <img src="docs/demo.gif" width="720" alt="trans translating Japanese to English, English to polite Japanese, and Japanese to Chinese in a terminal">
+  <img src="docs/demo.gif" width="720" alt="trs translating Japanese to English, English to polite Japanese, and Japanese to Chinese in a terminal">
 </p>
 
 ```sh
-wl-paste | trans | wl-copy             # translate the clipboard (Wayland)
-git log -1 --format=%B | trans -t ja   # read a commit message in Japanese
-trans -ff < notes.txt | less           # stream a file into a pager
+wl-paste | trs | wl-copy               # translate the clipboard (Wayland)
+git log -1 --format=%B | trs -t ja     # read a commit message in Japanese
+trs -ff < notes.txt | less             # stream a file into a pager
 ```
 
 | Model | One sentence, start → exit | Decode speed |
@@ -35,33 +35,32 @@ waits for GPU teardown on exit. When you are not translating, nothing is running
 ```sh
 brew install ikegam/tap/plamo-trans      # macOS (Apple Silicon) / Linux
 yay -S plamo-trans                       # Arch Linux (AUR)
-trans --download 0.8b                    # 0.6 GB — read the PLaMo Community License first
-trans -ff 吾輩は猫である。
+trs --download 0.8b                      # 0.6 GB — read the PLaMo Community License first
+trs -ff 吾輩は猫である。
 ```
 
 Prebuilt binaries (Linux x86_64/arm64, macOS arm64) are on the [releases page](https://github.com/ikegam/plamo-trans/releases):
-a single `trans` executable, copy it anywhere on your `PATH`. To build from source (needed for CUDA/Vulkan):
+a single `trs` executable, copy it anywhere on your `PATH`. To build from source (needed for CUDA/Vulkan):
 
 ```sh
 git clone https://github.com/ikegam/plamo-trans && cd plamo-trans
 cargo build --release                    # CPU (Metal on macOS); --features cuda or --features vulkan for GPU
-install target/release/trans ~/.local/bin/
+install target/release/trs ~/.local/bin/
 ```
 
-> [translate-shell](https://github.com/soimort/translate-shell) also installs a command named `trans`, and the
-> packages conflict with it. If you use it, build from source and install this one under another name, e.g.
-> `install target/release/trans ~/.local/bin/pt`.
+> The command is named `trs` so that it does not clash with `trans` from
+> [translate-shell](https://github.com/soimort/translate-shell).
 
 Details: [The model is not included](#the-model-is-not-included), [Build](#build), [Usage](#usage).
 
 ## What it does
 
 ```
-$ trans 吾輩は猫である。名前はまだ無い。
+$ trs 吾輩は猫である。名前はまだ無い。
 I am a cat. I have no name yet.
-$ echo "Please let me know if you have any questions." | trans -p
+$ echo "Please let me know if you have any questions." | trs -p
 ご質問があればお知らせください。
-$ trans -t zh-hans 今日はいい天気ですね
+$ trs -t zh-hans 今日はいい天気ですね
 今天天气很好呢
 ```
 
@@ -98,11 +97,11 @@ This repository contains no model weights. Download them yourself from Hugging F
 non-commercial use is free; commercial use needs registration or a separate agreement depending on revenue).
 
 ```sh
-trans --download 8b                    # 8B  Q4_K_M (5.3 GB), the default
-trans --download 2b                    # 2B  Q4_K_M (1.8 GB), for -f
-trans --download 0.8b                  # 0.8B Q4_K_M (0.6 GB), for -ff
-trans --download 31b                   # 31B Q4_K_M (19.5 GB), for -d
-trans --download 8b Q3_K_M             # another quantisation
+trs --download 8b                      # 8B  Q4_K_M (5.3 GB), the default
+trs --download 2b                      # 2B  Q4_K_M (1.8 GB), for -f
+trs --download 0.8b                    # 0.8B Q4_K_M (0.6 GB), for -ff
+trs --download 31b                     # 31B Q4_K_M (19.5 GB), for -d
+trs --download 8b Q3_K_M               # another quantisation
 ```
 
 (`scripts/download-model.sh` does the same; it is embedded in the binary.) You only need the sizes you use. The files go to `${XDG_DATA_HOME:-~/.local/share}/plamo-trans/`. Downloads resume after interruption and the
@@ -119,7 +118,7 @@ cargo build --release --features cuda    # NVIDIA
 cargo build --release --features vulkan  # Vulkan
 ```
 
-The result is one self-contained executable, `target/release/trans`: llama.cpp is linked statically. It is built for
+The result is one self-contained executable, `target/release/trs`: llama.cpp is linked statically. It is built for
 the CPU of the machine you build on; set `PLAMO_PORTABLE=1` for a baseline CPU (x86-64-v3), as the release binaries
 are. Extra CMake options can be passed in `PLAMO_CMAKE_ARGS`, e.g. `PLAMO_CMAKE_ARGS=-DCMAKE_CUDA_ARCHITECTURES=121`.
 
@@ -145,7 +144,7 @@ faster:
 ## Usage
 
 ```
-trans [options] [text...]       text from stdin when no text argument is given
+trs [options] [text...]         text from stdin when no text argument is given
   -t LANG   target language (default: en if the input contains kana, else ja)
   -s LANG   source language (default: detected by the model)
   -p / -P   polite / plain Japanese      -e  easy Japanese (ja(easy))

@@ -23,23 +23,21 @@ class PlamoTrans < Formula
     end
   end
 
-  conflicts_with "translate-shell", because: "both install a `trans` executable"
-
   def install
-    bin.install "trans"
+    bin.install "trs"
     doc.install "README.md"
   end
 
   def caveats
     <<~EOS
       The model is not included. Read the PLaMo Community License, then download one:
-        trans --download 8b      # 5.3 GB, the default
-        trans --download 0.8b    # 0.6 GB, for -ff
+        trs --download 8b      # 5.3 GB, the default
+        trs --download 0.8b    # 0.6 GB, for -ff
       https://huggingface.co/pfnet/plamo-3-translate-31b-GGUF
     EOS
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/trans -V")
+    assert_match version.to_s, shell_output("#{bin}/trs -V")
   end
 end

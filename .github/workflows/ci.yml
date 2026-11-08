@@ -10,18 +10,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --release --locked
       - name: Usage and version
         run: |
-          target/release/trans -V
-          target/release/trans -h || [ $? -eq 2 ]
+          target/release/trs -V
+          target/release/trs -h || [ $? -eq 2 ]
       - name: Cache test model
         uses: actions/cache@v4
         with:
@@ -30,7 +30,7 @@ jobs:
       - name: Translate with the 0.8B model
         run: |
           [ -f ~/.local/share/plamo-trans/plamo-3-translate-0.8b-Q2_K.gguf ] ||
-            target/release/trans --download 0.8b Q2_K > /dev/null
-          out=$(target/release/trans -ff -v 吾輩は猫である。)
+            target/release/trs --download 0.8b Q2_K > /dev/null
+          out=$(target/release/trs -ff -v 吾輩は猫である。)
           echo "$out"
           echo "$out" | grep -qi cat

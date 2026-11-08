@@ -9,7 +9,7 @@ url="https://github.com/ikegam/plamo-trans"
 license=('BSD-4-Clause' 'MIT')
 depends=('gcc-libs' 'glibc' 'curl')
 makedepends=('cargo' 'cmake')
-conflicts=('translate-shell')
+conflicts=('trs-git')
 # static libraries from the vendored llama.cpp are linked by rustc, which does not pass -flto
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
@@ -30,7 +30,7 @@ build() {
 
 package() {
     cd "$pkgname-$pkgver"
-    install -Dm755 target/release/trans "$pkgdir/usr/bin/trans"
+    install -Dm755 target/release/trs "$pkgdir/usr/bin/trs"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm644 vendor/llama.cpp/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE.llama.cpp"
     install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"

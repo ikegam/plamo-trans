@@ -118,7 +118,7 @@ fn batch_set(b: *mut Batch, toks: &[Token], pos0: i32, logits_last: bool) {
 
 // ---- options and prompt ----
 
-const USAGE: &str = "usage: trans [options] [text...]   (text from stdin when no text argument)
+const USAGE: &str = "usage: trs [options] [text...]   (text from stdin when no text argument)
   -t LANG   target language (default: en if the input contains kana, else ja)
   -s LANG   source language (default: detected by the model)
   -p / -P   polite / plain Japanese      -e  easy Japanese (ja(easy))
@@ -166,7 +166,7 @@ fn parse_args() -> Result<Opts, String> {
             "-v" => o.verbose = true,
             "-h" | "--help" => return Err(String::new()),
             "-V" | "--version" => {
-                println!("trans (plamo-trans) {} llama.cpp {}", env!("CARGO_PKG_VERSION"), LLAMA_COMMIT.trim());
+                println!("trs (plamo-trans) {} llama.cpp {}", env!("CARGO_PKG_VERSION"), LLAMA_COMMIT.trim());
                 std::process::exit(0);
             }
             "--download" => {
@@ -219,19 +219,19 @@ const LLAMA_COMMIT: &str = include_str!("../vendor/llama.cpp/COMMIT");
 const DOWNLOAD_SCRIPT: &str = include_str!("../scripts/download-model.sh");
 
 fn download_hint(size: &str) -> String {
-    format!("the {size} model is not installed; download it with\n  trans --download {size}")
+    format!("the {size} model is not installed; download it with\n  trs --download {size}")
 }
 
-/// `trans --download SIZE [QUANT]`: run the embedded scripts/download-model.sh.
+/// `trs --download SIZE [QUANT]`: run the embedded scripts/download-model.sh.
 fn download(args: &[String]) -> i32 {
     if args.is_empty() || args.len() > 2 {
-        eprintln!("usage: trans --download SIZE [QUANT]   SIZE: 0.8b 2b 8b 31b");
+        eprintln!("usage: trs --download SIZE [QUANT]   SIZE: 0.8b 2b 8b 31b");
         return 2;
     }
     match std::process::Command::new("sh").arg("-c").arg(DOWNLOAD_SCRIPT).arg("download-model").args(args).status() {
         Ok(s) => s.code().unwrap_or(1),
         Err(e) => {
-            eprintln!("trans: cannot run sh: {e}");
+            eprintln!("trs: cannot run sh: {e}");
             1
         }
     }
@@ -250,7 +250,7 @@ fn resolve_model(o: &Opts) -> Result<String, String> {
     for size in FALLBACK {
         if let Some(m) = find_model(size) {
             if size != DEFAULT_SIZE {
-                eprintln!("trans: {DEFAULT_SIZE} model not installed, using {size}");
+                eprintln!("trs: {DEFAULT_SIZE} model not installed, using {size}");
             }
             return Ok(m);
         }
@@ -412,7 +412,7 @@ fn run(o: Opts) -> Result<(), String> {
     if o.verbose {
         let s = |a: i64, b: i64| (b - a) as f64 / 1e6;
         eprintln!(
-            "[trans] target={target} load {:.2} s | prompt {n_prompt} tok {:.2} s ({:.0} t/s) | gen {n_gen} tok {:.2} s ({:.1} t/s)",
+            "[trs] target={target} load {:.2} s | prompt {n_prompt} tok {:.2} s ({:.0} t/s) | gen {n_gen} tok {:.2} s ({:.1} t/s)",
             s(t0, t_load),
             s(t_load, t_prompt),
             n_prompt as f64 / s(t_load, t_prompt),
@@ -457,7 +457,7 @@ fn run_forked(o: Opts) -> ExitCode {
             Ok(()) => 0,
             Err(e) if e == BROKEN_PIPE => 141,
             Err(e) => {
-                eprintln!("trans: {e}");
+                eprintln!("trs: {e}");
                 1
             }
         };
@@ -485,7 +485,7 @@ fn report(r: Result<(), String>) -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e == BROKEN_PIPE => ExitCode::from(141),
         Err(e) => {
-            eprintln!("trans: {e}");
+            eprintln!("trs: {e}");
             ExitCode::FAILURE
         }
     }
@@ -496,7 +496,7 @@ fn main() -> ExitCode {
     match parse_args() {
         Err(e) => {
             if !e.is_empty() {
-                eprintln!("trans: {e}");
+                eprintln!("trs: {e}");
             }
             eprintln!("{USAGE}");
             ExitCode::from(2)
