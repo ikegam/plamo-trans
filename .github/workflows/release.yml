@@ -1,0 +1,128 @@
+name: Release
+
+# Push a tag vX.Y.Z (matching the version in Cargo.toml) to build binaries and publish a GitHub release.
+# If the secrets are set, the Homebrew tap and the AUR package are updated as well:
+#   HOMEBREW_TAP_TOKEN  token with contents:write on ikegam/homebrew-tap
+#   AUR_SSH_KEY         private SSH key registered with the AUR account that owns plamo-trans
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # build on the oldest supported Ubuntu so the binaries run on older glibc
+          - { os: ubuntu-22.04, target: linux-x86_64, portable: '1' }
+          - { os: ubuntu-22.04-arm, target: linux-arm64, portable: '1' }
+          # Apple Silicon: native M1 flags run on every M-series chip; Metal is built in
+          - { os: macos-14, target: macos-arm64, portable: '' }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check version
+        run: |
+          v=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != Cargo.toml $v"; exit 1; }
+      - name: Build
+        env:
+          PLAMO_PORTABLE: ${{ matrix.portable }}
+          # linux-arm64: ARMv8.2 with dot product (Cortex-A76/Neoverse N1 and later, Raspberry Pi 5, Grace)
+          PLAMO_CMAKE_ARGS: ${{ matrix.target == 'linux-arm64' && '-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16' || '' }}
+        run: cargo build --release --locked
+      - name: Package
+        run: |
+          name=plamo-trans-${GITHUB_REF_NAME#v}-${{ matrix.target }}
+          mkdir "$name"
+          cp target/release/trans LICENSE README.md "$name/"
+          cp vendor/llama.cpp/LICENSE "$name/LICENSE.llama.cpp"
+          "$name/trans" -V
+          tar czf "$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: plamo-trans-*.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Source tarball and checksums
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          git archive --prefix="plamo-trans-$v/" -o "dist/plamo-trans-$v.tar.gz" "$GITHUB_REF_NAME"
+          cd dist && sha256sum *.tar.gz > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/SHA256SUMS
+
+  homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.TOKEN != ''
+      - uses: actions/download-artifact@v4
+        if: env.TOKEN != ''
+        with:
+          name: dist
+      - name: Update formula in ikegam/homebrew-tap
+        if: env.TOKEN != ''
+        run: |
+          packaging/update.sh "${GITHUB_REF_NAME#v}" SHA256SUMS
+          git clone "https://x-access-token:$TOKEN@github.com/ikegam/homebrew-tap" tap
+          mkdir -p tap/Formula
+          cp packaging/homebrew/plamo-trans.rb tap/Formula/
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/plamo-trans.rb
+          git commit -m "plamo-trans $GITHUB_REF_NAME"
+          git push
+
+  aur:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      KEY: ${{ secrets.AUR_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.KEY != ''
+      - uses: actions/download-artifact@v4
+        if: env.KEY != ''
+        with:
+          name: dist
+      - name: Push PKGBUILD to aur.archlinux.org/plamo-trans
+        if: env.KEY != ''
+        run: |
+          packaging/update.sh "${GITHUB_REF_NAME#v}" SHA256SUMS
+          mkdir -p ~/.ssh
+          echo "$KEY" > ~/.ssh/aur && chmod 600 ~/.ssh/aur
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur"
+          git clone ssh://aur@aur.archlinux.org/plamo-trans.git aur
+          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO aur/
+          cd aur
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to $GITHUB_REF_NAME"
+          git push origin HEAD:master

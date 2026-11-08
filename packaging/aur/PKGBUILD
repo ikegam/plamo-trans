@@ -1,0 +1,37 @@
+# Maintainer: Hiroyuki Ikegami <ikegam@pplc.co>
+# Version and checksum are filled in by packaging/update.sh on release.
+pkgname=plamo-trans
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Local translation as a Unix filter: PLaMo 3 Translate on llama.cpp, no server"
+arch=('x86_64' 'aarch64')
+url="https://github.com/ikegam/plamo-trans"
+license=('BSD-4-Clause' 'MIT')
+depends=('gcc-libs' 'glibc' 'curl')
+makedepends=('cargo' 'cmake')
+conflicts=('translate-shell')
+# static libraries from the vendored llama.cpp are linked by rustc, which does not pass -flto
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
+sha256sums=('0000000000000000000000000000000000000000000000000000000000000000')
+
+prepare() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    # llama.cpp is built for this machine's CPU (GGML_NATIVE)
+    cargo build --release --frozen
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    install -Dm755 target/release/trans "$pkgdir/usr/bin/trans"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 vendor/llama.cpp/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE.llama.cpp"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

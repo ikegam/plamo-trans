@@ -11,8 +11,13 @@ repository = "https://github.com/ikegam/plamo-trans"
 name = "trans"
 path = "src/main.rs"
 
+[features]
+cuda = []
+vulkan = []
+
 [build-dependencies]
 cc = "1"
+cmake = "0.1"
 
 [profile.release]
 lto = true

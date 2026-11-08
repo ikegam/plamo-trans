@@ -67,6 +67,7 @@ unsafe extern "C" {
     fn write(fd: c_int, buf: *const c_void, n: usize) -> isize;
     fn close(fd: c_int) -> c_int;
     fn waitpid(pid: c_int, status: *mut c_int, options: c_int) -> c_int;
+    #[cfg(target_os = "linux")]
     fn prctl(option: c_int, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> c_int;
     fn getppid() -> c_int;
     fn getpid() -> c_int;
@@ -128,6 +129,8 @@ const USAGE: &str = "usage: trans [options] [text...]   (text from stdin when no
   -m FILE   model file (overrides the size options; default also $PLAMO_MODEL)
             models live in ${XDG_DATA_HOME:-~/.local/share}/plamo-trans/
   -v        llama.cpp logs and timings on stderr
+  --download SIZE [QUANT]   download a model (0.8b 2b 8b 31b) from Hugging Face
+  -V, --version
 LANG: en ja zh-hans zh-hant ko fr de es it pt ru ...";
 
 #[derive(Default)]
@@ -162,6 +165,14 @@ fn parse_args() -> Result<Opts, String> {
             "-e" => o.target = Some("ja(easy)".into()),
             "-v" => o.verbose = true,
             "-h" | "--help" => return Err(String::new()),
+            "-V" | "--version" => {
+                println!("trans (plamo-trans) {} llama.cpp {}", env!("CARGO_PKG_VERSION"), LLAMA_COMMIT.trim());
+                std::process::exit(0);
+            }
+            "--download" => {
+                let rest: Vec<String> = args.collect();
+                std::process::exit(download(&rest));
+            }
             "--" => o.text.extend(args.by_ref()),
             s if s.starts_with('-') && s.len() > 1 => return Err(format!("unknown option {s}")),
             _ => o.text.push(a),
@@ -204,11 +215,26 @@ fn find_model(size: &str) -> Option<String> {
     found.pop()
 }
 
+const LLAMA_COMMIT: &str = include_str!("../vendor/llama.cpp/COMMIT");
+const DOWNLOAD_SCRIPT: &str = include_str!("../scripts/download-model.sh");
+
 fn download_hint(size: &str) -> String {
-    format!(
-        "the {size} model is not installed; download it with\n  {}/scripts/download-model.sh {size}",
-        env!("CARGO_MANIFEST_DIR")
-    )
+    format!("the {size} model is not installed; download it with\n  trans --download {size}")
+}
+
+/// `trans --download SIZE [QUANT]`: run the embedded scripts/download-model.sh.
+fn download(args: &[String]) -> i32 {
+    if args.is_empty() || args.len() > 2 {
+        eprintln!("usage: trans --download SIZE [QUANT]   SIZE: 0.8b 2b 8b 31b");
+        return 2;
+    }
+    match std::process::Command::new("sh").arg("-c").arg(DOWNLOAD_SCRIPT).arg("download-model").args(args).status() {
+        Ok(s) => s.code().unwrap_or(1),
+        Err(e) => {
+            eprintln!("trans: cannot run sh: {e}");
+            1
+        }
+    }
 }
 
 fn resolve_model(o: &Opts) -> Result<String, String> {
@@ -420,6 +446,7 @@ fn run_forked(o: Opts) -> ExitCode {
     if pid == 0 {
         // worker: die with the parent (e.g. when only the parent is killed), PR_SET_PDEATHSIG = 1, SIGKILL = 9
         unsafe {
+            #[cfg(target_os = "linux")]
             prctl(1, 9, 0, 0, 0);
             if getppid() != parent {
                 _exit(130);
