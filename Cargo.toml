@@ -1,6 +1,6 @@
 [package]
 name = "plamo-trans"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "One-shot PLaMo 3 Translate CLI on top of libllama (no server)"
 license-file = "LICENSE"

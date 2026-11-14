@@ -12,6 +12,7 @@ makedepends=('cargo' 'cmake')
 conflicts=('trs-git')
 # the static llama.cpp libraries are linked by rustc, which does not pass -flto
 options=('!lto')
+install=$pkgname.install
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
 sha256sums=('0000000000000000000000000000000000000000000000000000000000000000')
 
