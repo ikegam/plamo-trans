@@ -145,6 +145,7 @@ applies the patches in `patches/`. To try another commit, change `llama.cpp.comm
 
 ```
 trs [options] [text...]         text from stdin when no text argument is given
+                                (at a terminal: type one line and press Enter)
   -t LANG   target language (default: en if the input contains kana, else ja)
   -s LANG   source language (default: detected by the model)
   -p / -P   polite / plain Japanese      -e  easy Japanese (ja(easy))

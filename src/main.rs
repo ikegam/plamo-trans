@@ -118,7 +118,7 @@ fn batch_set(b: *mut Batch, toks: &[Token], pos0: i32, logits_last: bool) {
 
 // ---- options and prompt ----
 
-const USAGE: &str = "usage: trs [options] [text...]   (text from stdin when no text argument)
+const USAGE: &str = "usage: trs [options] [text...]   (no text: stdin; one line when typed at a terminal)
   -t LANG   target language (default: en if the input contains kana, else ja)
   -s LANG   source language (default: detected by the model)
   -p / -P   polite / plain Japanese      -e  easy Japanese (ja(easy))
@@ -304,11 +304,15 @@ fn build_prompt(o: &Opts, text: &str, target: &str) -> Result<String, String> {
 
 fn run(o: Opts) -> Result<(), String> {
     let text = if o.text.is_empty() {
-        if std::io::stdin().is_terminal() {
-            eprintln!("(reading text from stdin, end with Ctrl-D)");
-        }
         let mut s = String::new();
-        std::io::stdin().read_to_string(&mut s).map_err(|e| e.to_string())?;
+        if std::io::stdin().is_terminal() {
+            // typed by hand: one line, translated as soon as Enter is pressed
+            eprint!("> ");
+            let _ = std::io::stderr().flush();
+            std::io::stdin().read_line(&mut s).map_err(|e| e.to_string())?;
+        } else {
+            std::io::stdin().read_to_string(&mut s).map_err(|e| e.to_string())?;
+        }
         s
     } else {
         o.text.join(" ")
