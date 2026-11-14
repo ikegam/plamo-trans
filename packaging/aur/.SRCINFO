@@ -14,6 +14,7 @@ pkgbase = plamo-trans
 	depends = curl
 	conflicts = trs-git
 	options = !lto
+	install = plamo-trans.install
 	source = plamo-trans-0.1.0.tar.gz::https://github.com/ikegam/plamo-trans/releases/download/v0.1.0/plamo-trans-0.1.0.tar.gz
 	sha256sums = 0000000000000000000000000000000000000000000000000000000000000000
 

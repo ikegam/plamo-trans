@@ -126,10 +126,10 @@ jobs:
           ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur"
           git clone ssh://aur@aur.archlinux.org/plamo-trans.git aur
-          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO aur/
+          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO packaging/aur/plamo-trans.install aur/
           cd aur
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add PKGBUILD .SRCINFO
+          git add PKGBUILD .SRCINFO plamo-trans.install
           git commit -m "Update to $GITHUB_REF_NAME"
           git push origin HEAD:master
