@@ -8,7 +8,7 @@
 (English: [README.md](README.md))
 
 <p align="center">
-  <img src="docs/demo.gif" width="720" alt="ターミナルで trs が日英・英日(敬体)・日中を翻訳している様子">
+  <img src="docs/demo.gif" width="720" alt="ターミナルで trs が日英・プロンプトに打った1行・英日(敬体)・日中を翻訳している様子">
 </p>
 
 ```sh

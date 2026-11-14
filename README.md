@@ -7,7 +7,7 @@
 (Japanese: [README_jp.md](README_jp.md))
 
 <p align="center">
-  <img src="docs/demo.gif" width="720" alt="trs translating Japanese to English, English to polite Japanese, and Japanese to Chinese in a terminal">
+  <img src="docs/demo.gif" width="720" alt="trs translating Japanese to English, a line typed at the prompt, English to polite Japanese, and Japanese to Chinese in a terminal">
 </p>
 
 ```sh
